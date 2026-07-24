@@ -2,11 +2,14 @@ import {
   type ModelCapabilities,
   type OpenCodeSettings,
   type ServerProviderModel,
+  type ServerProviderSkill,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Data from "effect/Data";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 
 import { createModelCapabilities } from "@t3tools/shared/model";
 import { compareSemverVersions } from "@t3tools/shared/semver";
@@ -22,6 +25,7 @@ import {
   openCodeRuntimeErrorDetail,
   type OpenCodeInventory,
 } from "../opencodeRuntime.ts";
+import { discoverOpenCodeSkills } from "../Drivers/OpenCodeSkills.ts";
 import type { Agent, ProviderListResponse } from "@opencode-ai/sdk/v2";
 
 const OPENCODE_PRESENTATION = {
@@ -250,6 +254,49 @@ function flattenOpenCodeModels(input: OpenCodeInventory): ReadonlyArray<ServerPr
   return models.toSorted((left, right) => left.name.localeCompare(right.name));
 }
 
+function trimOptional(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function flattenOpenCodeSkills(
+  input: OpenCodeInventory,
+): ReadonlyArray<ServerProviderSkill> {
+  const skills: ServerProviderSkill[] = [];
+  for (const skill of input.skills ?? []) {
+    const name = trimOptional(skill.name);
+    const skillPath = trimOptional(skill.location);
+    if (!name || !skillPath) {
+      continue;
+    }
+
+    const description = trimOptional(skill.description);
+    skills.push({
+      name,
+      path: skillPath,
+      enabled: true,
+      ...(description ? { description, shortDescription: description } : {}),
+    });
+  }
+
+  return skills.toSorted((left, right) => left.name.localeCompare(right.name));
+}
+
+function mergeOpenCodeSkills(
+  inventorySkills: ReadonlyArray<ServerProviderSkill>,
+  filesystemSkills: ReadonlyArray<ServerProviderSkill>,
+): ReadonlyArray<ServerProviderSkill> {
+  const byName = new Map<string, ServerProviderSkill>();
+  for (const skill of filesystemSkills) {
+    byName.set(skill.name, skill);
+  }
+  // SDK/inventory rows win over filesystem guesses when both report a skill.
+  for (const skill of inventorySkills) {
+    byName.set(skill.name, skill);
+  }
+  return [...byName.values()].toSorted((left, right) => left.name.localeCompare(right.name));
+}
+
 export const makePendingOpenCodeProvider = (
   openCodeSettings: OpenCodeSettings,
 ): Effect.Effect<ServerProviderDraft> =>
@@ -274,8 +321,8 @@ export const makePendingOpenCodeProvider = (
           auth: { status: "unknown" },
           message:
             openCodeSettings.serverUrl.trim().length > 0
-              ? "OpenCode is disabled in T3 Code settings. A server URL is configured."
-              : "OpenCode is disabled in T3 Code settings.",
+              ? "OpenCode is disabled in PLOW Code settings. A server URL is configured."
+              : "OpenCode is disabled in PLOW Code settings.",
         },
       });
     }
@@ -299,7 +346,11 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
   openCodeSettings: OpenCodeSettings,
   cwd: string,
   environment?: NodeJS.ProcessEnv,
-): Effect.fn.Return<ServerProviderDraft, never, OpenCodeRuntime> {
+): Effect.fn.Return<
+  ServerProviderDraft,
+  never,
+  OpenCodeRuntime | FileSystem.FileSystem | Path.Path
+> {
   const openCodeRuntime = yield* OpenCodeRuntime;
   const resolvedEnvironment = environment ?? process.env;
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
@@ -339,8 +390,8 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
         status: "warning",
         auth: { status: "unknown" },
         message: isExternalServer
-          ? "OpenCode is disabled in T3 Code settings. A server URL is configured."
-          : "OpenCode is disabled in T3 Code settings.",
+          ? "OpenCode is disabled in PLOW Code settings. A server URL is configured."
+          : "OpenCode is disabled in PLOW Code settings.",
       },
     });
   }
@@ -368,7 +419,7 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
     if (!version) {
       return fallback(
         new Error(
-          `Unable to determine OpenCode version from \`opencode --version\` output. T3 Code requires OpenCode v${MINIMUM_OPENCODE_VERSION} or newer.`,
+          `Unable to determine OpenCode version from \`opencode --version\` output. PLOW Code requires OpenCode v${MINIMUM_OPENCODE_VERSION} or newer.`,
         ),
         null,
       );
@@ -429,12 +480,15 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
     customModels,
     DEFAULT_OPENCODE_MODEL_CAPABILITIES,
   );
+  const filesystemSkills = yield* discoverOpenCodeSkills(cwd, resolvedEnvironment);
+  const skills = mergeOpenCodeSkills(flattenOpenCodeSkills(inventoryExit.value), filesystemSkills);
   const connectedCount = inventoryExit.value.providerList.connected.length;
   return buildServerProvider({
     presentation: OPENCODE_PRESENTATION,
     enabled: true,
     checkedAt,
     models,
+    skills,
     probe: {
       installed: true,
       version,

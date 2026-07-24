@@ -6,6 +6,7 @@ import type {
   ServerProvider,
   ServerProviderAuth,
   ServerProviderModel,
+  ServerProviderSkill,
   ServerProviderState,
 } from "@t3tools/contracts";
 import type * as EffectAcpSchema from "effect-acp/schema";
@@ -46,6 +47,7 @@ import {
 } from "../providerMaintenance.ts";
 import * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import { CursorListAvailableModelsResponse } from "../acp/CursorAcpExtension.ts";
+import { discoverCursorSkills } from "../Drivers/CursorSkills.ts";
 
 const decodeCursorListAvailableModelsResponse = Schema.decodeUnknownEffect(
   CursorListAvailableModelsResponse,
@@ -64,7 +66,7 @@ const CURSOR_PARAMETERIZED_MODEL_PICKER_MIN_VERSION_DATE = 2026_04_08;
 const CURSOR_CLI_INSTALLATION_DOCS_URL = "https://cursor.com/docs/cli/installation";
 const CURSOR_ACP_MODEL_DISCOVERY_FAILED_MESSAGE = [
   "Cursor ACP model discovery failed.",
-  "Cursor CLI setup may be incomplete; install or enable the Cursor CLI, restart T3 Code, and try again.",
+  "Cursor CLI setup may be incomplete; install or enable the Cursor CLI, restart PLOW Code, and try again.",
   `See ${CURSOR_CLI_INSTALLATION_DOCS_URL}.`,
   "Check server logs for ACP details.",
 ].join(" ");
@@ -92,7 +94,7 @@ export function buildInitialCursorProviderSnapshot(
           version: null,
           status: "warning",
           auth: { status: "unknown" },
-          message: "Cursor is disabled in T3 Code settings.",
+          message: "Cursor is disabled in PLOW Code settings.",
         },
       });
     }
@@ -577,8 +579,8 @@ export function getCursorFallbackModels(
   return providerModelsFromSettings([], cursorSettings.customModels, EMPTY_CAPABILITIES);
 }
 
-/** Timeout for `agent about` — it's slower than a simple `--version` probe. */
-const ABOUT_TIMEOUT_MS = 8_000;
+/** Timeout for `agent about` — cold starts and busy hosts routinely exceed 8s. */
+const ABOUT_TIMEOUT_MS = 20_000;
 
 /** Strip ANSI escape sequences so we can parse plain key-value lines. */
 function stripAnsi(text: string): string {
@@ -617,7 +619,7 @@ function joinProviderMessages(...messages: ReadonlyArray<string | undefined>): s
 function buildCursorCliCommandMissingMessage(binaryPath: string): string {
   return [
     `Cursor CLI command \`${binaryPath}\` was not found.`,
-    `Install or enable the Cursor CLI, make sure \`${binaryPath}\` is on PATH, then restart T3 Code.`,
+    `Install or enable the Cursor CLI, make sure \`${binaryPath}\` is on PATH, then restart PLOW Code.`,
     `See ${CURSOR_CLI_INSTALLATION_DOCS_URL}.`,
   ].join(" ");
 }
@@ -627,6 +629,7 @@ export function buildCursorProviderSnapshot(input: {
   readonly cursorSettings: CursorSettings;
   readonly parsed: CursorAboutResult;
   readonly discoveredModels?: ReadonlyArray<ServerProviderModel>;
+  readonly skills?: ReadonlyArray<ServerProviderSkill>;
   readonly discoveryWarning?: string;
 }): ServerProviderDraft {
   const message = joinProviderMessages(input.parsed.message, input.discoveryWarning);
@@ -639,6 +642,7 @@ export function buildCursorProviderSnapshot(input: {
       input.cursorSettings.customModels,
       EMPTY_CAPABILITIES,
     ),
+    skills: input.skills ?? [],
     probe: {
       installed: true,
       version: input.parsed.version,
@@ -987,6 +991,7 @@ const runCursorAboutCommand = (cursorSettings: CursorSettings, environment?: Nod
 export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(function* (
   cursorSettings: CursorSettings,
   environment?: NodeJS.ProcessEnv,
+  cwd?: string,
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
@@ -994,6 +999,7 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
 > {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const fallbackModels = getCursorFallbackModels(cursorSettings);
+  const skills = yield* discoverCursorSkills(cwd);
 
   if (!cursorSettings.enabled) {
     return buildServerProvider({
@@ -1006,7 +1012,7 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Cursor is disabled in T3 Code settings.",
+        message: "Cursor is disabled in PLOW Code settings.",
       },
     });
   }
@@ -1105,6 +1111,7 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
     checkedAt,
     cursorSettings,
     parsed,
+    skills,
     discoveredModels: Option.getOrElse(
       Option.filter(discoveredModels, (models) => models.length > 0),
       () => [] as const,
