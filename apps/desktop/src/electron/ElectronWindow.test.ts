@@ -181,6 +181,35 @@ describe("ElectronWindow", () => {
     }).pipe(Effect.provide(TestLayer)),
   );
 
+  it.effect("reveal with stealFocus false shows without taking focus", () =>
+    Effect.gen(function* () {
+      const showInactiveMock = vi.fn();
+      const showMock = vi.fn();
+      const focusMock = vi.fn();
+      const window = {
+        id: 44,
+        isDestroyed: vi.fn(() => false),
+        isMinimized: vi.fn(() => false),
+        isVisible: vi.fn(() => false),
+        show: showMock,
+        showInactive: showInactiveMock,
+        focus: focusMock,
+      } as unknown as Electron.BrowserWindow;
+
+      const electronWindow = yield* ElectronWindow.ElectronWindow;
+      yield* electronWindow.reveal(window, { stealFocus: false });
+
+      assert.equal(showInactiveMock.mock.calls.length, 1);
+      assert.equal(showMock.mock.calls.length, 0);
+      assert.equal(focusMock.mock.calls.length, 0);
+      assert.equal(appFocusMock.mock.calls.length, 0);
+    }).pipe(
+      Effect.provide(
+        ElectronWindow.layer.pipe(Layer.provide(Layer.succeed(HostProcessPlatform, "darwin"))),
+      ),
+    ),
+  );
+
   it.effect("preserves message delivery failures with window and channel context", () =>
     Effect.gen(function* () {
       const cause = new Error("renderer send failed");

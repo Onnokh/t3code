@@ -371,6 +371,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     padding-inline-end: calc(env(safe-area-inset-right) + 0.75rem);
   }
 
+  /* Shared left/right rails for chat layout v2 (messages + composer). */
+  .chat-layout-v2-horizontal-inset {
+    padding-inline-start: calc(env(safe-area-inset-left) + 1.25rem);
+    padding-inline-end: calc(env(safe-area-inset-right) + 1.25rem);
+  }
+
   .chat-composer-glass {
     background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent);
     -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
@@ -756,6 +762,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     .chat-composer-horizontal-inset {
       padding-inline-start: calc(env(safe-area-inset-left) + 1.25rem);
       padding-inline-end: calc(env(safe-area-inset-right) + 1.25rem);
+    }
+
+    .chat-layout-v2-horizontal-inset {
+      padding-inline-start: calc(env(safe-area-inset-left) + 2rem);
+      padding-inline-end: calc(env(safe-area-inset-right) + 2rem);
     }
   }
 

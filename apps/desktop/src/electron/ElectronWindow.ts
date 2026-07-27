@@ -74,6 +74,23 @@ export class ElectronWindowOperationError extends Schema.TaggedErrorClass<Electr
   }
 }
 
+export type ElectronWindowRevealOptions = {
+  /**
+   * When false, restore/show the window without taking keyboard focus.
+   * Defaults to true (dock activation, second instance, menu actions).
+   */
+  readonly stealFocus?: boolean;
+};
+
+function showWindowWithoutActivating(window: Electron.BrowserWindow): void {
+  if (typeof window.showInactive === "function") {
+    window.showInactive();
+    return;
+  }
+
+  window.show();
+}
+
 export class ElectronWindow extends Context.Service<
   ElectronWindow,
   {
@@ -85,7 +102,10 @@ export class ElectronWindow extends Context.Service<
     readonly focusedMainOrFirst: Effect.Effect<Option.Option<Electron.BrowserWindow>>;
     readonly setMain: (window: Electron.BrowserWindow) => Effect.Effect<void>;
     readonly clearMain: (window: Option.Option<Electron.BrowserWindow>) => Effect.Effect<void>;
-    readonly reveal: (window: Electron.BrowserWindow) => Effect.Effect<void>;
+    readonly reveal: (
+      window: Electron.BrowserWindow,
+      options?: ElectronWindowRevealOptions,
+    ) => Effect.Effect<void>;
     readonly sendAll: (channel: string, ...args: readonly unknown[]) => Effect.Effect<void>;
     readonly destroyAll: Effect.Effect<void>;
     readonly syncAllAppearance: <E, R>(
@@ -205,7 +225,7 @@ export const make = Effect.gen(function* () {
         }
         return Option.none();
       }),
-    reveal: (window) =>
+    reveal: (window, options) =>
       Effect.try({
         try: () => {
           if (window.isDestroyed()) {
@@ -216,8 +236,17 @@ export const make = Effect.gen(function* () {
             window.restore();
           }
 
+          const stealFocus = options?.stealFocus ?? true;
           if (!window.isVisible()) {
-            window.show();
+            if (stealFocus) {
+              window.show();
+            } else {
+              showWindowWithoutActivating(window);
+            }
+          }
+
+          if (!stealFocus) {
+            return;
           }
 
           if (platform === "darwin") {

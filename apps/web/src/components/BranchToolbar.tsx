@@ -12,8 +12,10 @@ import {
 import { memo, useCallback, useMemo } from "react";
 
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
+import { useClientSettings } from "../hooks/useSettings";
 import { useProject, useThread, useThreadShellsForProjectRefs } from "../state/entities";
 import { useIsMobile } from "../hooks/useMediaQuery";
+import { cn } from "~/lib/utils";
 import {
   type EnvMode,
   type EnvironmentOption,
@@ -300,11 +302,17 @@ export const BranchToolbar = memo(function BranchToolbar({
     canPickEnvironment: showEnvironmentPicker,
   });
   const isMobile = useIsMobile();
+  const chatLayoutV2Enabled = useClientSettings((settings) => settings.chatLayoutV2Enabled);
 
   if (!hasActiveThread || !activeProject) return null;
 
   return (
-    <div className="chat-composer-context-strip -mt-4 mx-auto flex w-[calc(100%-2.75rem)] max-w-[calc(48rem-2.75rem)] items-center gap-2 px-1 pt-5 pb-1">
+    <div
+      className={cn(
+        "chat-composer-context-strip -mt-4 flex w-[calc(100%-2.75rem)] items-center gap-2 px-1 pt-5 pb-1",
+        chatLayoutV2Enabled ? null : "mx-auto max-w-[calc(48rem-2.75rem)]",
+      )}
+    >
       {isMobile ? (
         <MobileRunContextSelector
           envLocked={envLocked}

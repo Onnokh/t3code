@@ -68,6 +68,12 @@ describe("ClientSettings sidebar v2", () => {
   });
 });
 
+describe("ClientSettings chat layout v2", () => {
+  it("defaults the beta off", () => {
+    expect(decodeClientSettings({}).chatLayoutV2Enabled).toBe(false);
+  });
+});
+
 describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
   it("defaults to an empty record so legacy configs without the key still decode", () => {
     expect(DEFAULT_SERVER_SETTINGS.providerInstances).toEqual({});

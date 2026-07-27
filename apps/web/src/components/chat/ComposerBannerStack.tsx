@@ -37,10 +37,15 @@ export interface ComposerBannerStackItem {
 
 interface ComposerBannerStackProps {
   readonly className?: string;
+  readonly fullWidth?: boolean;
   readonly items: ReadonlyArray<ComposerBannerStackItem>;
 }
 
-export function ComposerBannerStack({ className, items }: ComposerBannerStackProps) {
+export function ComposerBannerStack({
+  className,
+  fullWidth = false,
+  items,
+}: ComposerBannerStackProps) {
   const [requestedExitingItemId, setExitingItemId] = useState<string | null>(null);
   const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exitingItemId =
@@ -83,7 +88,13 @@ export function ComposerBannerStack({ className, items }: ComposerBannerStackPro
   };
 
   return (
-    <div className={cn("group/banner-stack mx-auto mb-2 max-w-3xl", className)}>
+    <div
+      className={cn(
+        "group/banner-stack mb-2 w-full",
+        fullWidth ? null : "mx-auto max-w-3xl",
+        className,
+      )}
+    >
       <div
         className={cn(
           "relative flex flex-col-reverse",

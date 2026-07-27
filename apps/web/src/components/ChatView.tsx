@@ -160,6 +160,8 @@ import {
 } from "~/projectScripts";
 import { newDraftId, newMessageId, newThreadId } from "~/lib/utils";
 import { getProviderModelCapabilities, resolveSelectableProvider } from "../providerModels";
+import { formatProviderDisplayName } from "../lib/contextWindow";
+import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
 import { NO_PROVIDER_MODEL_SELECTION } from "../providerInstances";
 import { useClientSettings, useEnvironmentSettings } from "../hooks/useSettings";
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -215,6 +217,7 @@ import {
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import { ComposerWorkingStatus } from "./chat/ComposerWorkingStatus";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
@@ -2354,6 +2357,26 @@ function ChatViewContent(props: ChatViewProps) {
     const defaultInstanceId = defaultInstanceIdForDriver(selectedProvider);
     return providerStatuses.find((status) => status.instanceId === defaultInstanceId) ?? null;
   }, [activeProviderInstanceId, providerStatuses, selectedProvider]);
+  const timelineAssistantAuthor = useMemo(() => {
+    if (!activeProviderStatus) return null;
+    const modelSlug = activeThread?.modelSelection.model;
+    const selectedModel = modelSlug
+      ? activeProviderStatus.models.find((model) => model.slug === modelSlug)
+      : undefined;
+    const modelLabel = selectedModel
+      ? getTriggerDisplayModelLabel(selectedModel)
+      : (modelSlug ?? "Assistant");
+    return {
+      displayName: modelLabel,
+      harnessDisplayName:
+        activeProviderStatus.displayName?.trim() ||
+        formatProviderDisplayName(activeProviderStatus.driver),
+      driver: activeProviderStatus.driver,
+      ...(activeProviderStatus.accentColor
+        ? { accentColor: activeProviderStatus.accentColor }
+        : {}),
+    };
+  }, [activeProviderStatus, activeThread?.modelSelection.model]);
   const providerStatusBannerKey = getProviderStatusBannerKey(activeProviderStatus);
   const [dismissedProviderStatusBannerKey, setDismissedProviderStatusBannerKey] = useState<
     string | null
@@ -5622,12 +5645,18 @@ function ChatViewContent(props: ChatViewProps) {
             "bg-background transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none",
             isElectron
               ? cn(
-                  "workspace-topbar drag-region relative px-3 sm:px-5",
+                  "workspace-topbar drag-region relative",
+                  settings.chatLayoutV2Enabled ? "chat-layout-v2-horizontal-inset" : "px-3 sm:px-5",
                   reserveTitleBarControlInset &&
                     !inlineRightPanelOwnsTitleBar &&
                     "wco:pr-[var(--workspace-native-controls-inset)]",
                 )
-              : "workspace-topbar pl-[calc(env(safe-area-inset-left)+0.75rem)] pr-[calc(env(safe-area-inset-right)+0.75rem)] sm:pl-[calc(env(safe-area-inset-left)+1.25rem)] sm:pr-[calc(env(safe-area-inset-right)+1.25rem)]",
+              : cn(
+                  "workspace-topbar",
+                  settings.chatLayoutV2Enabled
+                    ? "chat-layout-v2-horizontal-inset"
+                    : "pl-[calc(env(safe-area-inset-left)+0.75rem)] pr-[calc(env(safe-area-inset-right)+0.75rem)] sm:pl-[calc(env(safe-area-inset-left)+1.25rem)] sm:pr-[calc(env(safe-area-inset-right)+1.25rem)]",
+                ),
             COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
           )}
         >
@@ -5699,6 +5728,8 @@ function ChatViewContent(props: ChatViewProps) {
                 timestampFormat={timestampFormat}
                 workspaceRoot={activeWorkspaceRoot}
                 skills={activeProviderStatus?.skills ?? EMPTY_PROVIDER_SKILLS}
+                assistantAuthor={timelineAssistantAuthor}
+                chatLayoutV2Enabled={settings.chatLayoutV2Enabled}
                 anchorMessageId={timelineAnchorMessageId}
                 onAnchorReady={onTimelineAnchorReady}
                 onAnchorSizeChanged={onTimelineAnchorSizeChanged}
@@ -5741,7 +5772,12 @@ function ChatViewContent(props: ChatViewProps) {
             >
               <div
                 ref={attachDraftHeroTransitionGroupRef}
-                className="chat-composer-horizontal-inset w-full"
+                className={cn(
+                  "w-full",
+                  settings.chatLayoutV2Enabled
+                    ? "chat-layout-v2-horizontal-inset"
+                    : "chat-composer-horizontal-inset",
+                )}
               >
                 <div className="pointer-events-auto relative z-10">
                   {isDraftHeroState ? (
@@ -5761,10 +5797,18 @@ function ChatViewContent(props: ChatViewProps) {
                           activeProjectTitle={activeProject?.title ?? null}
                         />
                       </div>
-                      <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
+                      <ComposerBannerStack
+                        className="relative z-0"
+                        fullWidth={settings.chatLayoutV2Enabled}
+                        items={composerBannerItems}
+                      />
                     </div>
                   ) : (
-                    <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
+                    <ComposerBannerStack
+                      className="relative z-0"
+                      fullWidth={settings.chatLayoutV2Enabled}
+                      items={composerBannerItems}
+                    />
                   )}
                   <div
                     className="relative"
@@ -5774,9 +5818,19 @@ function ChatViewContent(props: ChatViewProps) {
                         : undefined
                     }
                   >
+                    {settings.chatLayoutV2Enabled && isWorking ? (
+                      <div className="relative z-10 w-full pb-2.5">
+                        <ComposerWorkingStatus
+                          modelLabel={timelineAssistantAuthor?.displayName ?? "Assistant"}
+                          author={timelineAssistantAuthor}
+                          startedAt={activeWorkStartedAt}
+                        />
+                      </div>
+                    ) : null}
                     <div
                       className={cn(
-                        "chat-composer-glass-shell relative mx-auto w-full max-w-3xl",
+                        "chat-composer-glass-shell relative w-full",
+                        settings.chatLayoutV2Enabled ? null : "mx-auto max-w-3xl",
                         showComposerContextStrip && "chat-composer-glass-shell-with-context",
                       )}
                     >

@@ -52,6 +52,7 @@ function AutoSettleDaysInput({
 
 export function BetaSettingsPanel() {
   const sidebarV2Enabled = useClientSettings((settings) => settings.sidebarV2Enabled);
+  const chatLayoutV2Enabled = useClientSettings((settings) => settings.chatLayoutV2Enabled);
   const sidebarAutoSettleAfterDays = useClientSettings(
     (settings) => settings.sidebarAutoSettleAfterDays,
   );
@@ -60,6 +61,19 @@ export function BetaSettingsPanel() {
   return (
     <SettingsPageContainer>
       <SettingsSection title="Beta features">
+        <SettingsRow
+          title="Chat layout v2"
+          description="Discord/Slack-style messages: left-aligned with harness icon, model name, and timestamp. Switch back any time."
+          control={
+            <Switch
+              checked={chatLayoutV2Enabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ chatLayoutV2Enabled: Boolean(checked) })
+              }
+              aria-label="Enable the chat layout v2 beta"
+            />
+          }
+        />
         <SettingsRow
           title="Sidebar v2"
           description="One flat thread list in creation order. Active work renders as rich cards; settled threads collapse to compact rows. Settling requires an up-to-date server — on older servers threads simply stay active. Switch back any time."

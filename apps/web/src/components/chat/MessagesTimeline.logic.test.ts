@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   computeStableMessagesTimelineRows,
   computeMessageDurationStart,
+  deriveChatMessageGroupStartIds,
+  deriveChatLayoutV2RowRhythm,
   deriveMessagesTimelineRows,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
@@ -1010,6 +1012,301 @@ describe("deriveMessagesTimelineRows", () => {
     expect(expandedRows.find((row) => row.kind === "work-toggle")).toMatchObject({
       expanded: true,
     });
+  });
+});
+
+describe("deriveChatMessageGroupStartIds", () => {
+  it("marks only the first consecutive message per speaker", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "entry-user",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-1" as never,
+            role: "user",
+            text: "Hello",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "entry-assistant-1",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:01Z",
+          message: {
+            id: "assistant-1" as never,
+            role: "assistant",
+            text: "First",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:01Z",
+            updatedAt: "2026-01-01T00:00:01Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "entry-assistant-2",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:02Z",
+          message: {
+            id: "assistant-2" as never,
+            role: "assistant",
+            text: "Second",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:02Z",
+            updatedAt: "2026-01-01T00:00:02Z",
+            streaming: false,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:00:01Z",
+        completedAt: null,
+      },
+      runningTurnId: "turn-1" as never,
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:01Z",
+      hideWorkingIndicator: true,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const starts = deriveChatMessageGroupStartIds(rows);
+
+    expect(starts.has("user-1" as never)).toBe(true);
+    expect(starts.has("assistant-1" as never)).toBe(true);
+    expect(starts.has("assistant-2" as never)).toBe(false);
+  });
+
+  it("starts a new cluster after the speaker changes", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "entry-assistant",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "assistant-1" as never,
+            role: "assistant",
+            text: "Hi",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "entry-user",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:01Z",
+          message: {
+            id: "user-1" as never,
+            role: "user",
+            text: "Thanks",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:01Z",
+            updatedAt: "2026-01-01T00:00:01Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "entry-assistant-2",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:02Z",
+          message: {
+            id: "assistant-2" as never,
+            role: "assistant",
+            text: "Sure",
+            turnId: "turn-2" as never,
+            createdAt: "2026-01-01T00:00:02Z",
+            updatedAt: "2026-01-01T00:00:02Z",
+            streaming: false,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-2" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:00:02Z",
+        completedAt: null,
+      },
+      runningTurnId: "turn-2" as never,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      hideWorkingIndicator: true,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const starts = deriveChatMessageGroupStartIds(rows);
+
+    expect([...starts]).toEqual(["assistant-1", "user-1", "assistant-2"]);
+  });
+
+  it("starts a new assistant header after a mid-turn user steer with the same turn id", () => {
+    const turnId = "turn-1" as never;
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "entry-user-1",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-1" as never,
+            role: "user",
+            text: "Start",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "entry-assistant-1",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:01Z",
+          message: {
+            id: "assistant-1" as never,
+            role: "assistant",
+            text: "First",
+            turnId,
+            createdAt: "2026-01-01T00:00:01Z",
+            updatedAt: "2026-01-01T00:00:01Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "entry-user-2",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:02Z",
+          message: {
+            id: "user-2" as never,
+            role: "user",
+            text: "Steer",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:02Z",
+            updatedAt: "2026-01-01T00:00:02Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "entry-assistant-2",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:03Z",
+          message: {
+            id: "assistant-2" as never,
+            role: "assistant",
+            text: "Second",
+            turnId,
+            createdAt: "2026-01-01T00:00:03Z",
+            updatedAt: "2026-01-01T00:00:03Z",
+            streaming: false,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId,
+        state: "running",
+        startedAt: "2026-01-01T00:00:01Z",
+        completedAt: null,
+      },
+      runningTurnId: turnId,
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:01Z",
+      hideWorkingIndicator: true,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const starts = deriveChatMessageGroupStartIds(rows);
+
+    expect([...starts]).toEqual(["user-1", "assistant-1", "user-2", "assistant-2"]);
+  });
+});
+
+describe("deriveChatLayoutV2RowRhythm", () => {
+  it("uses a wider gap before the opposite speaker", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "entry-user",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-1" as never,
+            role: "user",
+            text: "Hello",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "entry-assistant",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:01Z",
+          message: {
+            id: "assistant-1" as never,
+            role: "assistant",
+            text: "Hi",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:01Z",
+            updatedAt: "2026-01-01T00:00:01Z",
+            streaming: false,
+          },
+        },
+      ],
+      isWorking: false,
+      activeTurnStartedAt: null,
+      hideWorkingIndicator: true,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+    const starts = deriveChatMessageGroupStartIds(rows);
+    const rhythm = deriveChatLayoutV2RowRhythm(rows, starts);
+
+    expect(rhythm.get("entry-user")).toEqual({ pb: "pb-4", pt: null });
+    expect(rhythm.get("entry-assistant")).toEqual({ pb: "pb-4", pt: null });
+  });
+
+  it("keeps message-to-tool spacing tighter than speaker changes", () => {
+    const rows = [
+      {
+        kind: "message" as const,
+        id: "entry-assistant",
+        createdAt: "2026-01-01T00:00:00Z",
+        message: {
+          id: "assistant-1" as never,
+          role: "assistant" as const,
+          text: "Working",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+        durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: false,
+        showAssistantCopyButton: false,
+        assistantCopyStreaming: false,
+      },
+      {
+        kind: "work" as const,
+        id: "work-1",
+        createdAt: "2026-01-01T00:00:01Z",
+        groupedEntries: [],
+      },
+    ];
+    const starts = deriveChatMessageGroupStartIds(rows);
+    const rhythm = deriveChatLayoutV2RowRhythm(rows, starts);
+
+    expect(rhythm.get("entry-assistant")?.pb).toBe("pb-2");
+    expect(rhythm.get("work-1")?.pb).toBe("pb-3");
   });
 });
 

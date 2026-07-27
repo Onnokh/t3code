@@ -222,6 +222,19 @@ function syncWindowAppearance(
 
 type RevealSubscription = (listener: () => void) => void;
 
+function shouldStealFocusOnUserReveal(
+  window: Electron.BrowserWindow,
+  isDevelopment: boolean,
+): boolean {
+  if (!isDevelopment) {
+    return true;
+  }
+
+  // Dev restarts fire macOS "activate" after the window is already visible in the
+  // background. Only steal focus when the user explicitly restores a hidden window.
+  return window.isMinimized() || !window.isVisible();
+}
+
 function bindFirstRevealTrigger(
   subscribers: readonly RevealSubscription[],
   reveal: () => void,
@@ -635,12 +648,20 @@ export const make = Effect.gen(function* () {
       if (persistedSettings.mainWindowMaximized) {
         window.maximize();
       }
-      void runPromise(Effect.andThen(electronWindow.reveal(window), dismissConnectingSplash));
+      void runPromise(
+        Effect.andThen(
+          electronWindow.reveal(window, {
+            // Dev restarts (server/main rebuilds) re-run ready-to-show; don't yank focus from the editor.
+            stealFocus: !environment.isDevelopment,
+          }),
+          dismissConnectingSplash,
+        ),
+      );
     });
 
     loadApplication();
     if (environment.isDevelopment) {
-      window.webContents.openDevTools({ mode: "detach" });
+      window.webContents.openDevTools({ mode: "detach", activate: false });
     }
 
     window.on("closed", () => {
@@ -734,7 +755,18 @@ export const make = Effect.gen(function* () {
     activate: Effect.gen(function* () {
       const existingWindow = yield* currentMainWindow;
       if (Option.isSome(existingWindow)) {
-        yield* electronWindow.reveal(existingWindow.value);
+        const window = existingWindow.value;
+        if (
+          environment.isDevelopment &&
+          window.isVisible() &&
+          !window.isMinimized() &&
+          !window.isFocused()
+        ) {
+          return;
+        }
+        yield* electronWindow.reveal(window, {
+          stealFocus: shouldStealFocusOnUserReveal(window, environment.isDevelopment),
+        });
         return;
       }
       // No real main window yet. While the backend is still cold-booting,

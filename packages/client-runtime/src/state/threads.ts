@@ -1,5 +1,6 @@
 import {
   ORCHESTRATION_WS_METHODS,
+  OrchestrationGetSnapshotError,
   type EnvironmentId as EnvironmentIdType,
   type OrchestrationThread,
   type OrchestrationThreadDetailSnapshot,
@@ -11,6 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { Atom } from "effect/unstable/reactivity";
@@ -48,6 +50,16 @@ function shouldPersistThread(thread: OrchestrationThread): boolean {
   return status !== "starting" && status !== "running";
 }
 
+const isOrchestrationGetSnapshotError = Schema.is(OrchestrationGetSnapshotError);
+
+function isThreadNotFoundFailure(cause: Cause.Cause<unknown>): boolean {
+  const error = Cause.squash(cause);
+  if (!isOrchestrationGetSnapshotError(error)) {
+    return false;
+  }
+  return error.message.includes("was not found");
+}
+
 export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make")(function* (
   threadId: ThreadIdType,
 ) {
@@ -80,6 +92,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
     Option.match(cached, { onNone: () => 0, onSome: (snapshot) => snapshot.snapshotSequence }),
   );
   const awaitingCompletion = yield* Ref.make(false);
+  const httpSnapshotAttempted = yield* Ref.make(false);
   const persistence = yield* Queue.sliding<OrchestrationThreadDetailSnapshot>(1);
 
   const persist = Effect.fn("EnvironmentThreadState.persist")(function* (
@@ -140,6 +153,16 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
         })),
       ),
     );
+
+  const handleSubscribeFailure = Effect.fn("EnvironmentThreadState.handleSubscribeFailure")(
+    function* (cause: Cause.Cause<unknown>) {
+      if (isThreadNotFoundFailure(cause)) {
+        yield* setDeleted();
+        return;
+      }
+      yield* setStreamError(cause);
+    },
+  );
 
   const setThread = Effect.fn("EnvironmentThreadState.setThread")(function* (
     thread: OrchestrationThread,
@@ -236,8 +259,19 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
   const foregroundResubscriptions = Option.match(wakeups, {
     onNone: () => Stream.never,
     onSome: (service) =>
-      service.changes.pipe(Stream.filter((reason) => reason === "application-active")),
+      service.changes.pipe(
+        Stream.filter((reason) => reason === "application-active"),
+        Stream.filterEffect(() =>
+          SubscriptionRef.get(state).pipe(Effect.map((current) => current.status !== "deleted")),
+        ),
+      ),
   });
+
+  const stopWhenDeleted = SubscriptionRef.changes(state).pipe(
+    Stream.filter((current) => current.status === "deleted"),
+    Stream.take(1),
+    Stream.runDrain,
+  );
 
   yield* setSynchronizing;
   yield* Effect.forkScoped(
@@ -252,7 +286,14 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
         yield* setSynchronizing;
 
         let current = yield* SubscriptionRef.get(state);
-        if (Option.isNone(current.data) && current.status !== "deleted") {
+        if (current.status === "deleted") {
+          return {
+            threadId,
+          };
+        }
+
+        if (Option.isNone(current.data) && !(yield* Ref.get(httpSnapshotAttempted))) {
+          yield* Ref.set(httpSnapshotAttempted, true);
           const prepared = yield* SubscriptionRef.get(supervisor.prepared).pipe(
             Effect.flatMap(
               Option.match({
@@ -291,11 +332,12 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
         };
       }),
       {
-        onExpectedFailure: setStreamError,
+        onExpectedFailure: handleSubscribeFailure,
         retryExpectedFailureAfter: "250 millis",
+        shouldRetryExpectedFailure: (cause) => !isThreadNotFoundFailure(cause),
         resubscribe: foregroundResubscriptions,
       },
-    ).pipe(Stream.runForEach(applyItem)),
+    ).pipe(Stream.interruptWhen(stopWhenDeleted), Stream.runForEach(applyItem)),
   );
 
   yield* Effect.addFinalizer(() =>

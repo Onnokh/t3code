@@ -2197,7 +2197,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     <form
       ref={composerFormRef}
       onSubmit={submitComposer}
-      className="mx-auto w-full min-w-0 max-w-3xl"
+      className={cn("w-full min-w-0", settings.chatLayoutV2Enabled ? null : "mx-auto max-w-3xl")}
       data-chat-composer-form="true"
     >
       <div

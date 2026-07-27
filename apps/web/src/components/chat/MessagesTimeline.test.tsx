@@ -437,6 +437,74 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("rounded-2xl bg-accent p-3");
   });
 
+  it("renders the discord chat layout when the beta flag is enabled", () => {
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        chatLayoutV2Enabled
+        timelineEntries={[buildUserTimelineEntry("Short prompt.")]}
+      />,
+    );
+
+    expect(markup).toContain('data-chat-message-layout="discord"');
+    expect(markup).toContain("You");
+    expect(markup).not.toContain("rounded-2xl bg-accent p-3");
+  });
+
+  it("groups consecutive assistant messages under one header in chat layout v2", () => {
+    const turnId = TurnId.make("turn-running");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        chatLayoutV2Enabled
+        isWorking
+        activeTurnInProgress
+        runningTurnId={turnId}
+        latestTurn={{
+          turnId,
+          state: "running",
+          startedAt: MESSAGE_CREATED_AT,
+          completedAt: null,
+        }}
+        timelineEntries={[
+          buildUserTimelineEntry("What is up?"),
+          {
+            id: "entry-assistant-1",
+            kind: "message" as const,
+            createdAt: MESSAGE_CREATED_AT,
+            message: {
+              id: MessageId.make("message-assistant-1"),
+              role: "assistant" as const,
+              text: "Checking that for you.",
+              turnId,
+              createdAt: MESSAGE_CREATED_AT,
+              updatedAt: MESSAGE_CREATED_AT,
+              streaming: false,
+            },
+          },
+          {
+            id: "entry-assistant-2",
+            kind: "message" as const,
+            createdAt: MESSAGE_CREATED_AT,
+            message: {
+              id: MessageId.make("message-assistant-2"),
+              role: "assistant" as const,
+              text: "Here is what I found.",
+              turnId,
+              createdAt: MESSAGE_CREATED_AT,
+              updatedAt: MESSAGE_CREATED_AT,
+              streaming: false,
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('data-chat-message-layout="discord"');
+    expect(markup).toContain('data-chat-message-layout="discord-continuation"');
+    expect((markup.match(/data-chat-message-author/g) ?? []).length).toBe(2);
+  });
+
   it("renders inline terminal labels with the composer chip UI", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline

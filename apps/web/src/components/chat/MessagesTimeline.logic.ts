@@ -410,6 +410,8 @@ export function deriveMessagesTimelineRows(input: {
   expandedWorkGroupIds?: ReadonlySet<string>;
   isWorking: boolean;
   activeTurnStartedAt: string | null;
+  /** When true, the working indicator lives in the composer instead of the timeline. */
+  hideWorkingIndicator?: boolean;
   turnDiffSummaryByAssistantMessageId: ReadonlyMap<MessageId, TurnDiffSummary>;
   revertTurnCountByUserMessageId: ReadonlyMap<MessageId, number>;
 }): MessagesTimelineRow[] {
@@ -563,7 +565,7 @@ export function deriveMessagesTimelineRows(input: {
     });
   }
 
-  if (input.isWorking) {
+  if (input.isWorking && !input.hideWorkingIndicator) {
     nextRows.push({
       kind: "working",
       id: "working-indicator-row",
@@ -572,6 +574,105 @@ export function deriveMessagesTimelineRows(input: {
   }
 
   return nextRows;
+}
+
+/** Discord-style clustering: consecutive messages from the same speaker share one header. */
+export function deriveChatMessageGroupStartIds(
+  rows: ReadonlyArray<MessagesTimelineRow>,
+): ReadonlySet<string> {
+  const startIds = new Set<string>();
+  let currentSpeaker: "user" | "assistant" | null = null;
+
+  for (const row of rows) {
+    if (row.kind !== "message") {
+      continue;
+    }
+    const role = row.message.role;
+    if (role !== "user" && role !== "assistant") {
+      continue;
+    }
+    if (role !== currentSpeaker) {
+      startIds.add(String(row.message.id));
+      currentSpeaker = role;
+    }
+  }
+
+  return startIds;
+}
+
+export type ChatLayoutV2RowRhythm = {
+  readonly pb: string;
+  readonly pt: string | null;
+};
+
+function messageRowRole(row: MessagesTimelineRow): "user" | "assistant" | null {
+  if (row.kind !== "message") {
+    return null;
+  }
+  return row.message.role === "user" || row.message.role === "assistant" ? row.message.role : null;
+}
+
+function isChatActivityRow(row: MessagesTimelineRow | undefined): boolean {
+  return row?.kind === "work" || row?.kind === "work-toggle" || row?.kind === "turn-fold";
+}
+
+/** Context-aware vertical rhythm for chat layout v2 (padding-bottom only between speakers). */
+export function deriveChatLayoutV2RowRhythm(
+  rows: ReadonlyArray<MessagesTimelineRow>,
+  groupStartIds: ReadonlySet<string>,
+): ReadonlyMap<string, ChatLayoutV2RowRhythm> {
+  const rhythm = new Map<string, ChatLayoutV2RowRhythm>();
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (!row) {
+      continue;
+    }
+    const next = rows[index + 1];
+    const role = messageRowRole(row);
+    const nextRole = next ? messageRowRole(next) : null;
+    const groupStart = row.kind === "message" && groupStartIds.has(String(row.message.id));
+
+    let pb = "pb-3";
+    const pt: string | null = null;
+
+    switch (row.kind) {
+      case "message": {
+        if (next?.kind === "message") {
+          pb = nextRole !== role ? "pb-4" : "pb-2";
+        } else if (isChatActivityRow(next)) {
+          pb = "pb-2";
+        } else {
+          pb = "pb-4";
+        }
+        break;
+      }
+      case "work":
+      case "work-toggle":
+        if (next?.kind === "work" || next?.kind === "work-toggle") {
+          pb = "pb-1.5";
+        } else if (next?.kind === "message") {
+          pb = "pb-2";
+        } else {
+          pb = "pb-3";
+        }
+        break;
+      case "turn-fold":
+        pb = next?.kind === "message" || isChatActivityRow(next) ? "pb-2" : "pb-3";
+        break;
+      case "working":
+        pb = "pb-3";
+        break;
+      case "proposed-plan":
+      default:
+        pb = "pb-3";
+        break;
+    }
+
+    rhythm.set(row.id, { pb, pt: groupStart ? pt : null });
+  }
+
+  return rhythm;
 }
 
 export function computeStableMessagesTimelineRows(

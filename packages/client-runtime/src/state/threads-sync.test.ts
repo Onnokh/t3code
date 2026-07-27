@@ -2,6 +2,7 @@ import {
   EnvironmentId,
   EventId,
   ORCHESTRATION_WS_METHODS,
+  OrchestrationGetSnapshotError,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
@@ -475,10 +476,34 @@ describe("EnvironmentThreads", () => {
       }
 
       const latest = yield* Ref.get(harness.latest);
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(2);
+      expect(yield* Ref.get(harness.subscriptionCount)).toBe(1);
       expect(yield* Ref.get(harness.loaderCalls)).toBe(0);
       expect(latest.status).toBe("deleted");
       expect(Option.isNone(latest.data)).toBe(true);
+    }),
+  );
+
+  it.effect("marks a missing thread deleted and stops retrying", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* Queue.offer(
+        harness.inputs,
+        new OrchestrationGetSnapshotError({
+          message: `Thread ${THREAD_ID} was not found`,
+          cause: THREAD_ID,
+        }),
+      );
+
+      yield* awaitThreadState(harness.observed, (value) => value.status === "deleted");
+      expect(yield* Ref.get(harness.loaderCalls)).toBe(1);
+
+      yield* TestClock.adjust("500 millis");
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        yield* Effect.yieldNow;
+      }
+
+      expect(yield* Ref.get(harness.subscriptionCount)).toBe(1);
+      expect(yield* Ref.get(harness.loaderCalls)).toBe(1);
     }),
   );
 
