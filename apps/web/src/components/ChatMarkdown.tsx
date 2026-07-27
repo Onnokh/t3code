@@ -1541,10 +1541,15 @@ function ChatMarkdown({
     ],
   );
 
+  const isChatLayoutV2Markdown = className?.includes("chat-markdown-v2") ?? false;
+
   return (
     <div
       className={cn(
-        "chat-markdown w-full min-w-0 text-sm leading-relaxed text-foreground/80",
+        "chat-markdown w-full min-w-0",
+        isChatLayoutV2Markdown
+          ? "text-sm leading-[1.375] text-foreground/90"
+          : "text-sm leading-relaxed text-foreground/80",
         className,
       )}
       onCopy={handleCopy}

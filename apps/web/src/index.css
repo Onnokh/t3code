@@ -1123,6 +1123,129 @@ label:has(> select#reasoning-effort) select {
   margin: 0.65rem 0;
 }
 
+/* Chat layout v2 — unified header→body rhythm and typography. */
+[data-chat-message-layout="discord"] .chat-message-body,
+[data-chat-message-layout="discord-continuation"] .chat-message-body {
+  margin: 0;
+  padding: 0;
+}
+
+[data-chat-message-layout="discord"] .chat-message-body > :first-child,
+[data-chat-message-layout="discord-continuation"] .chat-message-body > :first-child {
+  margin-top: 0;
+}
+
+[data-chat-message-layout="discord"] .chat-message-body .chat-markdown > :first-child,
+[data-chat-message-layout="discord-continuation"] .chat-message-body .chat-markdown > :first-child {
+  margin-top: 0;
+}
+
+[data-chat-message-layout="discord"] .chat-message-body .chat-markdown.chat-markdown-v2,
+[data-chat-message-layout="discord-continuation"]
+  .chat-message-body
+  .chat-markdown.chat-markdown-v2,
+[data-chat-message-layout="discord"] .chat-markdown-v2,
+[data-chat-message-layout="discord-continuation"] .chat-markdown-v2 {
+  margin-top: 0;
+  padding-top: 0;
+  font-size: 0.875rem;
+  line-height: 1.375;
+  color: color-mix(in srgb, var(--foreground) 90%, transparent);
+}
+
+[data-chat-message-layout="discord"] .chat-markdown,
+[data-chat-message-layout="discord-continuation"] .chat-markdown,
+[data-chat-message-layout="discord"] .chat-user-message-text,
+[data-chat-message-layout="discord-continuation"] .chat-user-message-text {
+  font-size: 0.875rem;
+  line-height: 1.375;
+  color: color-mix(in srgb, var(--foreground) 90%, transparent);
+}
+
+[data-chat-message-layout="discord"] .chat-markdown,
+[data-chat-message-layout="discord-continuation"] .chat-markdown {
+  line-height: 1.375;
+}
+
+[data-chat-message-layout="discord"] .chat-markdown p,
+[data-chat-message-layout="discord-continuation"] .chat-markdown p,
+[data-chat-message-layout="discord"] .chat-markdown ul,
+[data-chat-message-layout="discord-continuation"] .chat-markdown ul,
+[data-chat-message-layout="discord"] .chat-markdown ol,
+[data-chat-message-layout="discord-continuation"] .chat-markdown ol,
+[data-chat-message-layout="discord"] .chat-markdown blockquote,
+[data-chat-message-layout="discord-continuation"] .chat-markdown blockquote,
+[data-chat-message-layout="discord"] .chat-markdown pre,
+[data-chat-message-layout="discord-continuation"] .chat-markdown pre,
+[data-chat-message-layout="discord"] .chat-markdown .chat-markdown-table-container,
+[data-chat-message-layout="discord-continuation"] .chat-markdown .chat-markdown-table-container {
+  margin: 0.375rem 0;
+}
+
+[data-chat-message-layout="discord"] .chat-message-body [data-tool-activity-line="true"],
+[data-chat-message-layout="discord-continuation"]
+  .chat-message-body
+  [data-tool-activity-line="true"] {
+  margin-top: 0;
+  margin-bottom: 0.375rem;
+}
+
+/*
+ * TEMP: Chat layout v2 rhythm debug — remove with CHAT_LAYOUT_V2_RHYTHM_DEBUG.
+ * orange = avatar column | red = header | purple = content column | blue = body slot
+ * green = .chat-markdown root | cyan = first markdown block | yellow = turn-fold banner
+ * magenta = .chat-user-message-text wrapper
+ */
+[data-chat-rhythm-debug] [data-chat-message-avatar] {
+  background: rgb(255 165 0 / 35%);
+  outline: 1px dashed rgb(255 140 0);
+}
+
+[data-chat-rhythm-debug] [data-chat-message-header] {
+  background: rgb(255 0 0 / 22%);
+  outline: 1px dashed rgb(220 0 0);
+}
+
+[data-chat-rhythm-debug] [data-chat-message-content-column] {
+  background: rgb(160 0 255 / 12%);
+  outline: 1px dashed rgb(140 0 220);
+}
+
+[data-chat-rhythm-debug] .chat-message-body {
+  background: rgb(0 100 255 / 22%);
+  outline: 1px dashed rgb(0 80 220);
+}
+
+[data-chat-rhythm-debug] .chat-markdown {
+  background: rgb(0 200 0 / 22%);
+  outline: 1px dashed rgb(0 160 0);
+}
+
+[data-chat-rhythm-debug] .chat-markdown > :first-child {
+  background: rgb(0 220 220 / 28%);
+  outline: 1px dashed rgb(0 180 180);
+}
+
+[data-chat-rhythm-debug] [data-chat-message-actions] {
+  background: rgb(255 180 0 / 35%);
+  outline: 1px dashed rgb(220 140 0);
+}
+
+[data-chat-rhythm-debug] [data-chat-turn-fold-banner] {
+  background: rgb(255 230 0 / 40%);
+  outline: 1px dashed rgb(200 170 0);
+}
+
+[data-chat-rhythm-debug] .chat-user-message-text {
+  background: rgb(255 0 255 / 22%);
+  outline: 1px dashed rgb(200 0 200);
+}
+
+[data-chat-rhythm-debug] [data-chat-user-message-collapsible] {
+  background: rgb(255 120 200 / 22%);
+  outline: 1px dashed rgb(200 80 160);
+}
+
 .chat-markdown h1,
 .chat-markdown h2,
 .chat-markdown h3,

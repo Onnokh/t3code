@@ -53,6 +53,7 @@ import {
   MinusIcon,
   SquarePenIcon,
   TerminalIcon,
+  UnfoldVerticalIcon,
   Undo2Icon,
   WrenchIcon,
   XIcon,
@@ -65,9 +66,13 @@ import { ChangedFilesCard } from "./ChangedFilesTree";
 import { shouldAutoExpandChangedFiles } from "./changedFilesPresentation";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
+  CHAT_TOOL_ACTIVITY_PHASE_A,
+  CHAT_TOOL_ACTIVITY_PHASE_B,
+  CHAT_TOOL_ACTIVITY_PHASE_C,
   computeStableMessagesTimelineRows,
   deriveChatMessageGroupStartIds,
   deriveChatLayoutV2RowRhythm,
+  deriveFoldableTurnIds,
   deriveMessagesTimelineRows,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
@@ -78,6 +83,8 @@ import {
   resolveTimelineMinimapIndexFromPointer,
   resolveTimelineMinimapInteractiveWidth,
   resolveTimelineMinimapTopPercent,
+  type EmbeddedAssistantTurnFold,
+  type EmbeddedTurnContentItem,
   type StableMessagesTimelineRowsState,
   type MessagesTimelineRow,
   TIMELINE_MINIMAP_MIN_ITEMS,
@@ -117,6 +124,7 @@ import {
 } from "../../reviewCommentContext";
 import {
   AssistantAvatar,
+  CHAT_LAYOUT_V2_CONTENT_INSET,
   ChatUserAvatar,
   ChatUserDisplayName,
   DiscordMessageContinuationLayout,
@@ -124,6 +132,13 @@ import {
   type TimelineAssistantAuthor,
 } from "./ChatMessageChrome";
 import { formatWorkingTimerNow } from "./workingTimer";
+import {
+  CHAT_LAYOUT_V2_ACTIVITY_EXPAND_ICON_CLASS,
+  CHAT_LAYOUT_V2_TEXT_LINE_CLASS,
+  ToolActivityDrawer,
+  ToolActivityEntryLine,
+  ToolActivitySummaryLine,
+} from "./ToolActivityPanel";
 
 // ---------------------------------------------------------------------------
 // Context — shared state consumed by every row component via Context.
@@ -149,6 +164,10 @@ interface TimelineRowSharedState {
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onToggleTurnFold: (turnId: TurnId) => void;
+  onToggleTurnFullExpand: (turnId: TurnId) => void;
+  expandedTurnIds: ReadonlySet<TurnId>;
+  foldableTurnIds: ReadonlySet<TurnId>;
+  chatToolActivityPhaseC: boolean;
   onToggleWorkGroup: (groupId: string, anchorElement?: HTMLElement) => void;
 }
 
@@ -164,6 +183,9 @@ const TimelineRowActivityCtx = createContext<TimelineRowActivityState>(null!);
 const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FADE_HEADER = <div className="h-10 sm:h-12" />;
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
+const TIMELINE_LIST_HEADER_V2 = <div className="h-1" />;
+const TIMELINE_LIST_FADE_HEADER_V2 = <div className="h-6" />;
+const TIMELINE_LIST_FOOTER_V2 = <div className="h-1" />;
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
 
 // ---------------------------------------------------------------------------
@@ -240,10 +262,40 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   chatLayoutV2Enabled = false,
 }: MessagesTimelineProps) {
   const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(new Set());
+  const [expandedTurnActivityIds, setExpandedTurnActivityIds] = useState<ReadonlySet<TurnId>>(
+    new Set(),
+  );
   const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(new Set());
   const [minimapStripMap] = useState(() => new Map<string, HTMLSpanElement>());
 
-  const onToggleTurnFold = useCallback((turnId: TurnId) => {
+  const onToggleTurnFold = useCallback(
+    (turnId: TurnId) => {
+      if (chatLayoutV2Enabled) {
+        setExpandedTurnActivityIds((existing) => {
+          const next = new Set(existing);
+          if (next.has(turnId)) {
+            next.delete(turnId);
+          } else {
+            next.add(turnId);
+          }
+          return next;
+        });
+        return;
+      }
+
+      setExpandedTurnIds((existing) => {
+        const next = new Set(existing);
+        if (next.has(turnId)) {
+          next.delete(turnId);
+        } else {
+          next.add(turnId);
+        }
+        return next;
+      });
+    },
+    [chatLayoutV2Enabled],
+  );
+  const onToggleTurnFullExpand = useCallback((turnId: TurnId) => {
     setExpandedTurnIds((existing) => {
       const next = new Set(existing);
       if (next.has(turnId)) {
@@ -251,6 +303,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       } else {
         next.add(turnId);
       }
+      return next;
+    });
+    setExpandedTurnActivityIds((existing) => {
+      if (!existing.has(turnId)) {
+        return existing;
+      }
+      const next = new Set(existing);
+      next.delete(turnId);
       return next;
     });
   }, []);
@@ -328,14 +388,25 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         isWorking,
         activeTurnStartedAt,
         hideWorkingIndicator: chatLayoutV2Enabled,
+        compactLiveToolActivity: chatLayoutV2Enabled && CHAT_TOOL_ACTIVITY_PHASE_A,
+        quietLiveToolActivity:
+          chatLayoutV2Enabled && CHAT_TOOL_ACTIVITY_PHASE_A && CHAT_TOOL_ACTIVITY_PHASE_B,
+        embedAssistantTurnFold: chatLayoutV2Enabled,
         turnDiffSummaryByAssistantMessageId,
         revertTurnCountByUserMessageId,
+        ...(chatLayoutV2Enabled
+          ? {
+              expandedTurnActivityIds,
+              activityOnlyExpand: true,
+            }
+          : {}),
       }),
     [
       timelineEntries,
       latestTurn,
       runningTurnId,
       expandedTurnIds,
+      expandedTurnActivityIds,
       expandedWorkGroupIds,
       isWorking,
       activeTurnStartedAt,
@@ -447,6 +518,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [timelineViewportElement, rows.length]);
 
+  const chatToolActivityPhaseC =
+    chatLayoutV2Enabled && CHAT_TOOL_ACTIVITY_PHASE_A && CHAT_TOOL_ACTIVITY_PHASE_C;
+  const foldableTurnIds = useMemo(
+    () =>
+      deriveFoldableTurnIds({
+        timelineEntries,
+        latestTurn,
+        runningTurnId,
+      }),
+    [timelineEntries, latestTurn, runningTurnId],
+  );
+
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       timestampFormat,
@@ -465,6 +548,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onImageExpand,
       onOpenTurnDiff,
       onToggleTurnFold,
+      onToggleTurnFullExpand,
+      expandedTurnIds,
+      foldableTurnIds,
+      chatToolActivityPhaseC,
       onToggleWorkGroup,
     }),
     [
@@ -483,6 +570,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onImageExpand,
       onOpenTurnDiff,
       onToggleTurnFold,
+      onToggleTurnFullExpand,
+      expandedTurnIds,
+      foldableTurnIds,
+      chatToolActivityPhaseC,
       onToggleWorkGroup,
     ],
   );
@@ -554,8 +645,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               chatLayoutV2Enabled ? "chat-layout-v2-horizontal-inset" : "px-3 sm:px-5",
               topFadeEnabled && "chat-timeline-scroll-fade",
             )}
-            ListHeaderComponent={topFadeEnabled ? TIMELINE_LIST_FADE_HEADER : TIMELINE_LIST_HEADER}
-            ListFooterComponent={TIMELINE_LIST_FOOTER}
+            ListHeaderComponent={
+              topFadeEnabled
+                ? chatLayoutV2Enabled
+                  ? TIMELINE_LIST_FADE_HEADER_V2
+                  : TIMELINE_LIST_FADE_HEADER
+                : chatLayoutV2Enabled
+                  ? TIMELINE_LIST_HEADER_V2
+                  : TIMELINE_LIST_HEADER
+            }
+            ListFooterComponent={
+              chatLayoutV2Enabled ? TIMELINE_LIST_FOOTER_V2 : TIMELINE_LIST_FOOTER
+            }
           />
           <TimelineMinimap
             items={minimapItems}
@@ -879,8 +980,8 @@ function TimelineRowShell({ row }: { row: TimelineRow }) {
   return (
     <div
       className={cn(
-        "w-full min-w-0 overflow-x-clip",
-        chatLayoutV2Enabled ? null : "mx-auto max-w-3xl",
+        "w-full min-w-0",
+        chatLayoutV2Enabled ? "overflow-x-visible" : "mx-auto max-w-3xl overflow-x-clip",
       )}
       data-timeline-root="true"
     >
@@ -889,13 +990,10 @@ function TimelineRowShell({ row }: { row: TimelineRow }) {
   );
 }
 
-/** Shared surface for chat-layout-v2 activity pills (tools, toggles, worked-for). */
-const CHAT_LAYOUT_V2_ACTIVITY_PILL_CLASS =
-  "inline-flex w-fit max-w-full items-center gap-1.5 rounded-full border border-border/55 bg-muted/40 py-1 ps-2.5 pe-2 text-[12px] leading-4 text-muted-foreground transition-colors hover:bg-muted/65 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70";
-
 function timelineRowBottomSpacingClassic(row: TimelineRow): string {
   return (row.kind === "message" && row.message.role === "assistant" && !row.showAssistantMeta) ||
     row.kind === "work" ||
+    row.kind === "work-live-summary" ||
     row.kind === "work-toggle"
     ? "pb-2"
     : "pb-4";
@@ -908,7 +1006,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
   return (
     <div
       className={cn(
-        chatLayoutV2Enabled ? (rowRhythm?.pb ?? "pb-3") : timelineRowBottomSpacingClassic(row),
+        chatLayoutV2Enabled ? (rowRhythm?.pb ?? "pb-1") : timelineRowBottomSpacingClassic(row),
         chatLayoutV2Enabled ? rowRhythm?.pt : null,
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
       )}
@@ -918,6 +1016,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       data-message-role={row.kind === "message" ? row.message.role : undefined}
     >
       {row.kind === "work" ? <WorkGroupSection groupedEntries={row.groupedEntries} /> : null}
+      {row.kind === "work-live-summary" ? <WorkLiveSummaryTimelineRow row={row} /> : null}
       {row.kind === "work-toggle" ? <WorkGroupToggleTimelineRow row={row} /> : null}
       {row.kind === "turn-fold" ? <TurnFoldTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
@@ -1070,6 +1169,30 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   );
 }
 
+function TurnFullExpandButton({ expanded, onClick }: { expanded: boolean; onClick: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            aria-expanded={expanded}
+            aria-label={expanded ? "Hide turn activity" : "Show turn activity"}
+            onClick={onClick}
+          >
+            <UnfoldVerticalIcon className="size-3" />
+          </Button>
+        }
+      />
+      <TooltipPopup side="top">
+        {expanded ? "Hide turn activity" : "Show turn activity"}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
 function RevertUserMessageButton({ messageId }: { messageId: MessageId }) {
   const ctx = use(TimelineRowCtx);
   const activity = use(TimelineRowActivityCtx);
@@ -1095,28 +1218,90 @@ function RevertUserMessageButton({ messageId }: { messageId: MessageId }) {
   );
 }
 
+function EmbeddedAssistantTurnContent({
+  items,
+}: {
+  items: ReadonlyArray<EmbeddedTurnContentItem>;
+}) {
+  const ctx = use(TimelineRowCtx);
+
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mb-1 flex flex-col gap-1">
+      {items.map((item) => {
+        if (item.kind === "assistant-segment") {
+          return (
+            <div key={item.id} className="relative min-w-0">
+              <ChatMarkdown
+                text={item.text}
+                cwd={ctx.markdownCwd}
+                threadRef={ctx.threadRef ?? undefined}
+                isStreaming={false}
+                skills={ctx.skills}
+                className={ctx.chatLayoutV2Enabled ? "chat-markdown-v2" : undefined}
+              />
+            </div>
+          );
+        }
+
+        return (
+          <SimpleWorkEntryRow
+            key={item.id}
+            workEntry={item.entry}
+            workspaceRoot={ctx.workspaceRoot}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/** Turn fold — click toggles tool activity inline in the timeline. */
+function TurnFoldActivityLine({
+  fold,
+  onClick,
+}: {
+  fold: EmbeddedAssistantTurnFold | Extract<TimelineRow, { kind: "turn-fold" }>;
+  onClick: () => void;
+}) {
+  const hasToolActivity = fold.toolEntries.length > 0;
+  const Icon = fold.expanded ? ChevronDownIcon : ChevronRightIcon;
+
+  return (
+    <ToolActivitySummaryLine
+      as="button"
+      entries={fold.toolEntries}
+      fallbackLabel={fold.label}
+      aria-expanded={fold.expanded}
+      title={
+        fold.expanded
+          ? "Hide tool activity"
+          : hasToolActivity
+            ? "Show tool activity in timeline"
+            : fold.label
+      }
+      data-scroll-anchor-ignore
+      onClick={onClick}
+      trailing={
+        hasToolActivity ? (
+          <Icon
+            className={cn(CHAT_LAYOUT_V2_ACTIVITY_EXPAND_ICON_CLASS, fold.expanded && "opacity-60")}
+            aria-hidden
+          />
+        ) : null
+      }
+    />
+  );
+}
+
 function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-fold" }> }) {
   const ctx = use(TimelineRowCtx);
-  const Icon = row.expanded ? ChevronDownIcon : ChevronRightIcon;
 
   if (ctx.chatLayoutV2Enabled) {
-    return (
-      <div className="ps-[3.25rem]">
-        <button
-          type="button"
-          aria-expanded={row.expanded}
-          data-scroll-anchor-ignore
-          onClick={() => ctx.onToggleTurnFold(row.turnId)}
-          className={cn(
-            CHAT_LAYOUT_V2_ACTIVITY_PILL_CLASS,
-            "cursor-pointer select-none tabular-nums",
-          )}
-        >
-          <span>{row.label}</span>
-          <Icon className="size-3.5 opacity-70" />
-        </button>
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -1129,7 +1314,11 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
         className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-xs text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
       >
         <span>{row.label}</span>
-        <Icon className="size-3.5" />
+        {row.expanded ? (
+          <ChevronDownIcon className="size-3.5" />
+        ) : (
+          <ChevronRightIcon className="size-3.5" />
+        )}
       </button>
     </div>
   );
@@ -1138,22 +1327,23 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
-  const messageBody = (
-    <div className="relative min-w-0">
-      <ChatMarkdown
-        text={messageText}
-        cwd={ctx.markdownCwd}
-        threadRef={ctx.threadRef ?? undefined}
-        isStreaming={Boolean(row.message.streaming)}
-        skills={ctx.skills}
-      />
-      <AssistantChangedFilesSection
-        turnSummary={row.assistantTurnDiffSummary}
-        routeThreadKey={ctx.routeThreadKey}
-        resolvedTheme={ctx.resolvedTheme}
-        onOpenTurnDiff={ctx.onOpenTurnDiff}
-      />
-    </div>
+  const assistantChangedFilesSection = (
+    <AssistantChangedFilesSection
+      turnSummary={row.assistantTurnDiffSummary}
+      routeThreadKey={ctx.routeThreadKey}
+      resolvedTheme={ctx.resolvedTheme}
+      onOpenTurnDiff={ctx.onOpenTurnDiff}
+    />
+  );
+  const assistantMessageTextBody = (
+    <ChatMarkdown
+      text={messageText}
+      cwd={ctx.markdownCwd}
+      threadRef={ctx.threadRef ?? undefined}
+      isStreaming={Boolean(row.message.streaming)}
+      skills={ctx.skills}
+      className={ctx.chatLayoutV2Enabled ? "chat-markdown-v2" : undefined}
+    />
   );
 
   if (ctx.chatLayoutV2Enabled) {
@@ -1164,15 +1354,65 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
       showCopyButton: row.showAssistantCopyButton,
       streaming: row.assistantCopyStreaming,
     });
-    const actions = assistantCopyState.visible ? (
-      <MessageCopyButton text={assistantCopyState.text ?? ""} variant="ghost" />
-    ) : undefined;
+    const turnId = row.message.turnId;
+    const canExpandTurn =
+      row.showAssistantMeta &&
+      turnId !== null &&
+      turnId !== undefined &&
+      ctx.foldableTurnIds.has(turnId);
+    const isTurnExpanded = canExpandTurn && ctx.expandedTurnIds.has(turnId);
+    const actions =
+      canExpandTurn || assistantCopyState.visible ? (
+        <>
+          {canExpandTurn ? (
+            <TurnFullExpandButton
+              expanded={isTurnExpanded}
+              onClick={() => ctx.onToggleTurnFullExpand(turnId)}
+            />
+          ) : null}
+          {assistantCopyState.visible ? (
+            <MessageCopyButton text={assistantCopyState.text ?? ""} variant="ghost" />
+          ) : null}
+        </>
+      ) : undefined;
     const isGroupStart = ctx.chatMessageGroupStartIds.has(String(row.message.id));
+    const turnFoldBanner =
+      row.assistantTurnFold && !row.assistantTurnFold.showEmbeddedFullTurn ? (
+        <div data-chat-turn-fold-banner="">
+          <TurnFoldActivityLine
+            fold={row.assistantTurnFold}
+            onClick={() => ctx.onToggleTurnFold(row.assistantTurnFold!.turnId)}
+          />
+        </div>
+      ) : null;
+    const embeddedFullTurn = row.assistantTurnFold?.showEmbeddedFullTurn ? (
+      <EmbeddedAssistantTurnContent items={row.assistantTurnFold.embeddedTurnItems} />
+    ) : null;
+    const embeddedToolEntries = row.assistantTurnFold?.showEmbeddedToolEntries ? (
+      <div className="mb-1 flex flex-col gap-1">
+        {row.assistantTurnFold.toolEntries.map((workEntry) => (
+          <SimpleWorkEntryRow
+            key={workEntry.id}
+            workEntry={workEntry}
+            workspaceRoot={ctx.workspaceRoot}
+          />
+        ))}
+      </div>
+    ) : null;
+    const messageWithTurnFold = (
+      <>
+        {turnFoldBanner}
+        {embeddedFullTurn}
+        {embeddedToolEntries}
+        {assistantMessageTextBody}
+        {assistantChangedFilesSection}
+      </>
+    );
 
     if (!isGroupStart) {
       return (
         <DiscordMessageContinuationLayout actions={actions}>
-          {messageBody}
+          {messageWithTurnFold}
         </DiscordMessageContinuationLayout>
       );
     }
@@ -1185,7 +1425,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
         timestampFormat={ctx.timestampFormat}
         actions={actions}
       >
-        {messageBody}
+        {messageWithTurnFold}
       </DiscordMessageLayout>
     );
   }
@@ -1193,7 +1433,8 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   return (
     <>
       <div className="relative min-w-0 px-1 py-0.5">
-        {messageBody}
+        {assistantMessageTextBody}
+        {assistantChangedFilesSection}
         {row.showAssistantMeta ? (
           <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/assistant:opacity-100">
             <AssistantCopyButton row={row} />
@@ -1253,7 +1494,7 @@ function ProposedPlanTimelineRow({
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   const { chatLayoutV2Enabled } = use(TimelineRowCtx);
   return (
-    <div className={cn("py-0.5", chatLayoutV2Enabled ? "pl-[3.25rem]" : "pl-1.5")}>
+    <div className={cn("py-0.5", chatLayoutV2Enabled ? CHAT_LAYOUT_V2_CONTENT_INSET : "pl-1.5")}>
       <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/70 tabular-nums">
         <span className="inline-flex items-center gap-[3px]">
           <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-status-pulse" />
@@ -1329,13 +1570,13 @@ const WorkGroupSection = memo(function WorkGroupSection({
 
   return (
     <section
-      className={cn(chatLayoutV2Enabled ? "ps-[3.25rem]" : "-mx-1 px-1 py-0.5 pe-1")}
+      className={cn(chatLayoutV2Enabled ? CHAT_LAYOUT_V2_CONTENT_INSET : "-mx-1 px-1 py-0.5 pe-1")}
       aria-label={groupLabel}
     >
       {!onlyToolEntries && (
         <p className="px-0.5 pb-1 font-medium text-[11px] text-muted-foreground/65">{groupLabel}</p>
       )}
-      <div className={cn(chatLayoutV2Enabled ? "flex flex-col items-start gap-2" : "space-y-px")}>
+      <div className={cn(chatLayoutV2Enabled ? "flex flex-col items-start gap-1" : "space-y-px")}>
         {nonEmptyEntries.map((workEntry) => (
           <SimpleWorkEntryRow
             key={workEntry.id}
@@ -1347,6 +1588,46 @@ const WorkGroupSection = memo(function WorkGroupSection({
     </section>
   );
 });
+
+function WorkLiveSummaryTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "work-live-summary" }>;
+}) {
+  const { chatToolActivityPhaseC } = use(TimelineRowCtx);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const trailingMutedLabel = row.totalCount > 1 ? `· ${row.totalCount} tools` : null;
+  const canOpenDrawer = chatToolActivityPhaseC && row.entries.length > 0;
+
+  return (
+    <div className={CHAT_LAYOUT_V2_CONTENT_INSET}>
+      <div className="flex w-fit max-w-full flex-col items-start">
+        {canOpenDrawer ? (
+          <ToolActivityEntryLine
+            as="button"
+            aria-expanded={drawerOpen}
+            onClick={() => setDrawerOpen((open) => !open)}
+            entry={row.latestEntry}
+            trailingMutedLabel={trailingMutedLabel}
+            trailing={
+              <ChevronDownIcon
+                className={cn(
+                  CHAT_LAYOUT_V2_ACTIVITY_EXPAND_ICON_CLASS,
+                  "transition-transform duration-200",
+                  drawerOpen && "rotate-180 opacity-60",
+                )}
+                aria-hidden
+              />
+            }
+          />
+        ) : (
+          <ToolActivityEntryLine entry={row.latestEntry} trailingMutedLabel={trailingMutedLabel} />
+        )}
+        {drawerOpen ? <ToolActivityDrawer entries={row.entries} className="mt-1.5" /> : null}
+      </div>
+    </div>
+  );
+}
 
 function WorkGroupToggleTimelineRow({
   row,
@@ -1366,12 +1647,15 @@ function WorkGroupToggleTimelineRow({
     : `+${row.hiddenCount} previous ${labelNoun}`;
 
   return (
-    <div className={cn(ctx.chatLayoutV2Enabled ? "ps-[3.25rem]" : null)}>
+    <div className={cn(ctx.chatLayoutV2Enabled ? CHAT_LAYOUT_V2_CONTENT_INSET : null)}>
       <button
         type="button"
         className={cn(
           ctx.chatLayoutV2Enabled
-            ? cn(CHAT_LAYOUT_V2_ACTIVITY_PILL_CLASS, "cursor-pointer")
+            ? cn(
+                "group/activity relative m-0 block w-fit max-w-full cursor-pointer border-0 bg-transparent p-0 text-left text-muted-foreground/60 transition-colors hover:text-muted-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+                CHAT_LAYOUT_V2_TEXT_LINE_CLASS,
+              )
             : "flex w-full cursor-pointer items-center gap-1.5 rounded-md px-0.5 py-0.5 pe-0.5 text-left text-[12px] leading-5 transition-colors duration-150 hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
         )}
         aria-expanded={row.expanded}
@@ -1382,17 +1666,30 @@ function WorkGroupToggleTimelineRow({
           ctx.onToggleWorkGroup(row.groupId, anchorElement);
         }}
       >
-        <ChevronDownIcon
-          className={cn(
-            "size-3.5 shrink-0 opacity-70 transition-transform duration-200",
-            row.expanded && "rotate-180",
-          )}
-        />
-        <span
-          className={ctx.chatLayoutV2Enabled ? "font-medium" : "font-medium text-foreground/82"}
-        >
-          {label}
-        </span>
+        {ctx.chatLayoutV2Enabled ? (
+          <>
+            <span className="block min-w-0 truncate">{label}</span>
+            <span className="absolute end-0 top-0 flex h-[1.375em] items-center">
+              <ChevronDownIcon
+                className={cn(
+                  CHAT_LAYOUT_V2_ACTIVITY_EXPAND_ICON_CLASS,
+                  "transition-transform duration-200",
+                  row.expanded && "rotate-180 opacity-60",
+                )}
+              />
+            </span>
+          </>
+        ) : (
+          <>
+            <ChevronDownIcon
+              className={cn(
+                "size-3.5 shrink-0 opacity-70 transition-transform duration-200",
+                row.expanded && "rotate-180",
+              )}
+            />
+            <span className="font-medium text-foreground/82">{label}</span>
+          </>
+        )}
       </button>
     </div>
   );
@@ -1583,63 +1880,92 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
   markdownCwd: string | undefined;
   footer?: ReactNode;
 }) {
+  const { chatLayoutV2Enabled } = use(TimelineRowCtx);
   const [expanded, setExpanded] = useState(false);
   const hasVisibleBody = props.text.trim().length > 0 || props.terminalContexts.length > 0;
   const canCollapse = hasVisibleBody && shouldCollapseUserMessage(props.text);
   const isCollapsed = canCollapse && !expanded;
 
+  const body = hasVisibleBody ? (
+    chatLayoutV2Enabled && !canCollapse ? (
+      <UserMessageBody
+        text={props.text}
+        terminalContexts={props.terminalContexts}
+        skills={props.skills}
+        markdownCwd={props.markdownCwd}
+      />
+    ) : (
+      <div
+        className={cn("relative", isCollapsed && "max-h-44 overflow-hidden")}
+        data-chat-user-message-collapsible=""
+        {...(chatLayoutV2Enabled
+          ? {}
+          : {
+              "data-user-message-body": "true",
+            })}
+        data-user-message-collapsed={isCollapsed ? "true" : "false"}
+        data-user-message-collapsible={canCollapse ? "true" : "false"}
+        data-user-message-fade={isCollapsed ? "true" : "false"}
+        style={
+          isCollapsed
+            ? {
+                WebkitMaskImage: COLLAPSED_USER_MESSAGE_FADE_MASK,
+                maskImage: COLLAPSED_USER_MESSAGE_FADE_MASK,
+              }
+            : undefined
+        }
+      >
+        <UserMessageBody
+          text={props.text}
+          terminalContexts={props.terminalContexts}
+          skills={props.skills}
+          markdownCwd={props.markdownCwd}
+        />
+      </div>
+    )
+  ) : null;
+
+  const footer =
+    canCollapse || props.footer ? (
+      <div
+        className={cn(
+          "mt-1.5 flex items-center gap-2",
+          canCollapse && props.footer ? "justify-between" : "justify-end",
+        )}
+        data-user-message-footer="true"
+      >
+        {canCollapse ? (
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            aria-expanded={expanded}
+            data-scroll-anchor-ignore
+            onClick={() => setExpanded((value) => !value)}
+            className="-ml-1 h-6 rounded-md px-1.5 text-xs text-muted-foreground/72 hover:bg-muted/55 hover:text-foreground/85"
+          >
+            {expanded ? "Show less" : "Show full message"}
+          </Button>
+        ) : null}
+        {props.footer ? (
+          <div className="ml-auto flex items-center gap-2">{props.footer}</div>
+        ) : null}
+      </div>
+    ) : null;
+
+  if (chatLayoutV2Enabled) {
+    return (
+      <>
+        {body}
+        {footer}
+      </>
+    );
+  }
+
   return (
     <div>
-      {hasVisibleBody ? (
-        <div
-          className={cn("relative", isCollapsed && "max-h-44 overflow-hidden")}
-          data-user-message-body="true"
-          data-user-message-collapsed={isCollapsed ? "true" : "false"}
-          data-user-message-collapsible={canCollapse ? "true" : "false"}
-          data-user-message-fade={isCollapsed ? "true" : "false"}
-          style={
-            isCollapsed
-              ? {
-                  WebkitMaskImage: COLLAPSED_USER_MESSAGE_FADE_MASK,
-                  maskImage: COLLAPSED_USER_MESSAGE_FADE_MASK,
-                }
-              : undefined
-          }
-        >
-          <UserMessageBody
-            text={props.text}
-            terminalContexts={props.terminalContexts}
-            skills={props.skills}
-            markdownCwd={props.markdownCwd}
-          />
-        </div>
-      ) : null}
-      {canCollapse || props.footer ? (
-        <div
-          className={cn(
-            "mt-1.5 flex items-center gap-2",
-            canCollapse && props.footer ? "justify-between" : "justify-end",
-          )}
-          data-user-message-footer="true"
-        >
-          {canCollapse ? (
-            <Button
-              type="button"
-              size="xs"
-              variant="ghost"
-              aria-expanded={expanded}
-              data-scroll-anchor-ignore
-              onClick={() => setExpanded((value) => !value)}
-              className="-ml-1 h-6 rounded-md px-1.5 text-xs text-muted-foreground/72 hover:bg-muted/55 hover:text-foreground/85"
-            >
-              {expanded ? "Show less" : "Show full message"}
-            </Button>
-          ) : null}
-          {props.footer ? (
-            <div className="ml-auto flex items-center gap-2">{props.footer}</div>
-          ) : null}
-        </div>
-      ) : null}
+      {body}
+      {footer}
     </div>
   );
 });
@@ -1651,6 +1977,11 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   markdownCwd: string | undefined;
 }) {
   const ctx = use(TimelineRowCtx);
+  const userMarkdownClassName = ctx.chatLayoutV2Enabled ? "chat-markdown-v2" : "text-foreground";
+  const userMarkdownLineBreaks = true;
+  const userTextClass = ctx.chatLayoutV2Enabled
+    ? "chat-user-message-text whitespace-pre-wrap wrap-break-word"
+    : "whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground";
   const renderInlineMarkdownSegment = (text: string, key: string) => {
     const leadingWhitespace = /^\s+/.exec(text)?.[0] ?? "";
     const textWithoutLeadingWhitespace = text.slice(leadingWhitespace.length);
@@ -1669,8 +2000,8 @@ const UserMessageBody = memo(function UserMessageBody(props: {
             cwd={props.markdownCwd}
             threadRef={ctx.threadRef ?? undefined}
             skills={props.skills}
-            className="text-foreground"
-            lineBreaks
+            className={userMarkdownClassName}
+            lineBreaks={userMarkdownLineBreaks}
           />
         ) : null}
         {trailingWhitespace ? <span aria-hidden="true">{trailingWhitespace}</span> : null}
@@ -1691,8 +2022,8 @@ const UserMessageBody = memo(function UserMessageBody(props: {
                   cwd={props.markdownCwd}
                   threadRef={ctx.threadRef ?? undefined}
                   skills={props.skills}
-                  className="text-foreground"
-                  lineBreaks
+                  className={userMarkdownClassName}
+                  lineBreaks={userMarkdownLineBreaks}
                 />
               </div>
             ) : null
@@ -1749,11 +2080,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
           );
         }
 
-        return (
-          <div className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground">
-            {inlineNodes}
-          </div>
-        );
+        return <div className={userTextClass}>{inlineNodes}</div>;
       }
     }
 
@@ -1779,19 +2106,15 @@ const UserMessageBody = memo(function UserMessageBody(props: {
           cwd={props.markdownCwd}
           threadRef={ctx.threadRef ?? undefined}
           skills={props.skills}
-          className="text-foreground"
-          lineBreaks
+          className={userMarkdownClassName}
+          lineBreaks={userMarkdownLineBreaks}
         />,
       );
     } else if (inlinePrefix.length === 0) {
       return null;
     }
 
-    return (
-      <div className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground">
-        {inlineNodes}
-      </div>
-    );
+    return <div className={userTextClass}>{inlineNodes}</div>;
   }
 
   if (props.text.length === 0) {
@@ -1804,8 +2127,8 @@ const UserMessageBody = memo(function UserMessageBody(props: {
       cwd={props.markdownCwd}
       threadRef={ctx.threadRef ?? undefined}
       skills={props.skills}
-      className="text-foreground"
-      lineBreaks
+      className={userMarkdownClassName}
+      lineBreaks={userMarkdownLineBreaks}
     />
   );
 });
@@ -2062,8 +2385,9 @@ const stopRowToggle = (e: { stopPropagation: () => void }) => e.stopPropagation(
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
   workspaceRoot: string | undefined;
+  trailingMutedLabel?: string | null;
 }) {
-  const { workEntry, workspaceRoot } = props;
+  const { workEntry, workspaceRoot, trailingMutedLabel = null } = props;
   const { chatLayoutV2Enabled } = use(TimelineRowCtx);
   const activity = use(TimelineRowActivityCtx);
   const [expanded, setExpanded] = useState(false);
@@ -2157,50 +2481,43 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   ) : null;
 
   if (chatLayoutV2Enabled) {
+    const lineText = preview ? `${heading} · ${preview}` : heading;
+
     return (
-      <div className="flex w-fit max-w-full flex-col items-start" data-tool-activity-pill="true">
-        <div
-          className={cn(
-            CHAT_LAYOUT_V2_ACTIVITY_PILL_CLASS,
-            "select-none",
-            showDestructiveRowStyle && "border-destructive/35 bg-destructive/8 text-destructive",
-            showWarningIndicator && "border-warning/35 bg-warning/8 text-warning",
-            canExpand && "cursor-pointer",
-          )}
-          {...rowToggleProps}
-        >
-          <span className={iconWrapperClass}>
-            <WorkEntryIconSvg
-              name={entryIconName}
-              className="block size-3 shrink-0 stroke-[1.8] opacity-80"
-            />
-          </span>
-          <span className="flex min-w-0 max-w-[min(100%,20rem)] items-baseline gap-1.5 overflow-hidden sm:max-w-[28rem]">
-            <span className={cn("shrink truncate", headingClass)}>{heading}</span>
-            {preview ? (
-              <span className="min-w-0 truncate text-muted-foreground/55">{preview}</span>
-            ) : null}
-          </span>
-          <span className="flex shrink-0 items-center gap-0.5 text-muted-foreground/55">
-            {canExpand ? (
-              <ChevronDownIcon
-                className={cn(
-                  "size-3 shrink-0 opacity-70 transition-transform duration-200",
-                  expanded && "rotate-180",
-                )}
-                aria-hidden
-              />
-            ) : null}
-            {statusIcon}
-          </span>
-        </div>
+      <div className="flex w-fit max-w-full flex-col items-start" data-tool-activity-line="true">
+        <ToolActivityEntryLine
+          as={canExpand ? "button" : "div"}
+          entry={workEntry}
+          text={lineText}
+          failed={showDestructiveRowStyle || showWarningIndicator}
+          aria-label={displayText}
+          onClick={canExpand ? () => setExpanded((v) => !v) : undefined}
+          trailing={
+            <span className="flex shrink-0 items-center gap-0.5 text-muted-foreground/55">
+              {trailingMutedLabel ? (
+                <span className="shrink-0 text-muted-foreground/55">{trailingMutedLabel}</span>
+              ) : null}
+              {canExpand ? (
+                <ChevronDownIcon
+                  className={cn(
+                    CHAT_LAYOUT_V2_ACTIVITY_EXPAND_ICON_CLASS,
+                    "transition-transform duration-200",
+                    expanded && "rotate-180 opacity-60",
+                  )}
+                  aria-hidden
+                />
+              ) : null}
+              {statusIcon}
+            </span>
+          }
+        />
         {expanded && canExpand && expandedBody ? (
           <div
-            className="mt-1.5 w-full max-w-[min(100%,36rem)] cursor-default rounded-xl border border-border/45 bg-muted/20 px-3 py-2"
+            className="mt-1 w-full max-w-[min(100%,36rem)] cursor-default border-s border-border/40 ps-2.5"
             onClick={stopRowToggle}
             onPointerDown={stopRowToggle}
           >
-            <pre className="max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground select-text">
+            <pre className="max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/75 select-text">
               {expandedBody}
             </pre>
           </div>

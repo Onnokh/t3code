@@ -4,7 +4,10 @@ import {
   computeMessageDurationStart,
   deriveChatMessageGroupStartIds,
   deriveChatLayoutV2RowRhythm,
+  deriveFoldableTurnIds,
+  deriveLiveTurnToolActivity,
   deriveMessagesTimelineRows,
+  formatToolActivitySummary,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
 } from "./MessagesTimeline.logic";
@@ -1271,8 +1274,8 @@ describe("deriveChatLayoutV2RowRhythm", () => {
     const starts = deriveChatMessageGroupStartIds(rows);
     const rhythm = deriveChatLayoutV2RowRhythm(rows, starts);
 
-    expect(rhythm.get("entry-user")).toEqual({ pb: "pb-4", pt: null });
-    expect(rhythm.get("entry-assistant")).toEqual({ pb: "pb-4", pt: null });
+    expect(rhythm.get("entry-user")).toEqual({ pb: "pb-2", pt: null });
+    expect(rhythm.get("entry-assistant")).toEqual({ pb: "pb-2", pt: null });
   });
 
   it("keeps message-to-tool spacing tighter than speaker changes", () => {
@@ -1305,8 +1308,8 @@ describe("deriveChatLayoutV2RowRhythm", () => {
     const starts = deriveChatMessageGroupStartIds(rows);
     const rhythm = deriveChatLayoutV2RowRhythm(rows, starts);
 
-    expect(rhythm.get("entry-assistant")?.pb).toBe("pb-2");
-    expect(rhythm.get("work-1")?.pb).toBe("pb-3");
+    expect(rhythm.get("entry-assistant")?.pb).toBe("pb-1");
+    expect(rhythm.get("work-1")?.pb).toBe("pb-1");
   });
 });
 
@@ -1466,5 +1469,631 @@ describe("computeStableMessagesTimelineRows", () => {
 
     expect(reordered).not.toBe(initial);
     expect(reordered.result).toEqual([initial.result[1], initial.result[0]]);
+  });
+
+  it("collapses live-turn tools into one summary pill when phase A is enabled", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "work-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:05Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:05Z",
+            turnId: "turn-1" as never,
+            label: "Read file",
+            tone: "tool" as const,
+            itemType: "file_change",
+          },
+        },
+        {
+          id: "work-entry-2",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:08Z",
+          entry: {
+            id: "work-2",
+            createdAt: "2026-01-01T00:00:08Z",
+            turnId: "turn-1" as never,
+            label: "Search codebase",
+            tone: "tool" as const,
+            itemType: "web_search",
+          },
+        },
+        {
+          id: "work-entry-3",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:12Z",
+          entry: {
+            id: "work-3",
+            createdAt: "2026-01-01T00:00:12Z",
+            turnId: "turn-1" as never,
+            label: "Edit file",
+            tone: "tool" as const,
+            itemType: "file_change",
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:00Z",
+      hideWorkingIndicator: true,
+      compactLiveToolActivity: true,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        kind: "work-live-summary",
+        id: "work-entry-3",
+        totalCount: 3,
+        entries: [
+          expect.objectContaining({ id: "work-1" }),
+          expect.objectContaining({ id: "work-2" }),
+          expect.objectContaining({ id: "work-3" }),
+        ],
+        latestEntry: expect.objectContaining({ id: "work-3", label: "Edit file" }),
+      }),
+    ]);
+  });
+
+  it("keeps live-turn tools out of the timeline when phase B is enabled", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "work-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:05Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:05Z",
+            turnId: "turn-1" as never,
+            label: "Read file",
+            tone: "tool" as const,
+            itemType: "file_change",
+          },
+        },
+        {
+          id: "work-entry-2",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:08Z",
+          entry: {
+            id: "work-2",
+            createdAt: "2026-01-01T00:00:08Z",
+            turnId: "turn-1" as never,
+            label: "Search codebase",
+            tone: "tool" as const,
+            itemType: "web_search",
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:00Z",
+      hideWorkingIndicator: true,
+      compactLiveToolActivity: true,
+      quietLiveToolActivity: true,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows).toEqual([]);
+  });
+
+  it("derives live-turn tool activity for the composer", () => {
+    const activity = deriveLiveTurnToolActivity({
+      timelineEntries: [
+        {
+          id: "work-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:05Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:05Z",
+            turnId: "turn-1" as never,
+            label: "Read file",
+            tone: "tool" as const,
+            itemType: "file_change",
+          },
+        },
+        {
+          id: "work-entry-2",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:08Z",
+          entry: {
+            id: "work-2",
+            createdAt: "2026-01-01T00:00:08Z",
+            turnId: "turn-1" as never,
+            label: "Edit file",
+            tone: "tool" as const,
+            itemType: "file_change",
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+    });
+
+    expect(activity).toEqual({
+      totalCount: 2,
+      latestEntry: expect.objectContaining({ id: "work-2", label: "Edit file" }),
+      entries: [
+        expect.objectContaining({ id: "work-1" }),
+        expect.objectContaining({ id: "work-2" }),
+      ],
+    });
+  });
+
+  it("keeps failed live-turn tools visible when phase A is enabled", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "work-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:05Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:05Z",
+            turnId: "turn-1" as never,
+            label: "Read file",
+            tone: "tool" as const,
+            itemType: "file_change",
+          },
+        },
+        {
+          id: "work-entry-2",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:08Z",
+          entry: {
+            id: "work-2",
+            createdAt: "2026-01-01T00:00:08Z",
+            turnId: "turn-1" as never,
+            label: "Run command",
+            tone: "error" as const,
+            itemType: "command_execution",
+            command: "npm test",
+          },
+        },
+        {
+          id: "work-entry-3",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:12Z",
+          entry: {
+            id: "work-3",
+            createdAt: "2026-01-01T00:00:12Z",
+            turnId: "turn-1" as never,
+            label: "Search codebase",
+            tone: "tool" as const,
+            itemType: "web_search",
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:00Z",
+      hideWorkingIndicator: true,
+      compactLiveToolActivity: true,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.map((row) => row.kind)).toEqual(["work", "work-live-summary"]);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        kind: "work",
+        groupedEntries: [expect.objectContaining({ id: "work-2", tone: "error" })],
+      }),
+    );
+    expect(rows[1]).toEqual(
+      expect.objectContaining({
+        kind: "work-live-summary",
+        totalCount: 2,
+        latestEntry: expect.objectContaining({ id: "work-3" }),
+      }),
+    );
+  });
+
+  it("appends tool count to settled turn fold labels when phase A is enabled", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "work-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:05Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:05Z",
+            turnId: "turn-1" as never,
+            label: "Read file",
+            tone: "tool" as const,
+            itemType: "file_change",
+          },
+        },
+        {
+          id: "work-entry-2",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:08Z",
+          entry: {
+            id: "work-2",
+            createdAt: "2026-01-01T00:00:08Z",
+            turnId: "turn-1" as never,
+            label: "Edit file",
+            tone: "tool" as const,
+            itemType: "file_change",
+          },
+        },
+        {
+          id: "assistant-final-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:20Z",
+          message: {
+            id: "assistant-final" as never,
+            role: "assistant",
+            text: "Done",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:20Z",
+            updatedAt: "2026-01-01T00:00:22Z",
+            streaming: false,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "completed",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: "2026-01-01T00:00:22Z",
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      compactLiveToolActivity: true,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const foldRow = rows.find((row) => row.kind === "turn-fold");
+    expect(foldRow?.label).toBe("Worked for 22s · 2 tools");
+    expect(foldRow?.kind === "turn-fold" && foldRow.toolEntries).toHaveLength(2);
+  });
+
+  it("reveals hidden tool rows inline without unfolding commentary when activity-only expand is enabled", () => {
+    const timelineEntries = [
+      {
+        id: "user-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:00Z",
+        message: {
+          id: "user-1" as never,
+          role: "user" as const,
+          text: "Go",
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "assistant-thought-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:05Z",
+        message: {
+          id: "assistant-thought" as never,
+          role: "assistant" as const,
+          text: "Looking around first.",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:05Z",
+          updatedAt: "2026-01-01T00:00:06Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "work-entry-1",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:08Z",
+        entry: {
+          id: "work-1",
+          createdAt: "2026-01-01T00:00:08Z",
+          turnId: "turn-1" as never,
+          label: "Ran command",
+          tone: "tool" as const,
+        },
+      },
+      {
+        id: "assistant-final-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:20Z",
+        message: {
+          id: "assistant-final" as never,
+          role: "assistant" as const,
+          text: "Done",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:20Z",
+          updatedAt: "2026-01-01T00:00:22Z",
+          streaming: false,
+        },
+      },
+    ];
+
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries,
+      expandedTurnActivityIds: new Set(["turn-1" as never]),
+      activityOnlyExpand: true,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-entry",
+      "turn-fold:turn-1",
+      "work-entry-1",
+      "assistant-final-entry",
+    ]);
+  });
+
+  it("embeds expanded tool activity under the assistant summary line in chat layout v2", () => {
+    const timelineEntries = [
+      {
+        id: "user-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:00Z",
+        message: {
+          id: "user-1" as never,
+          role: "user" as const,
+          text: "Go",
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "work-entry-1",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:08Z",
+        entry: {
+          id: "work-1",
+          createdAt: "2026-01-01T00:00:08Z",
+          turnId: "turn-1" as never,
+          label: "Ran command",
+          tone: "tool" as const,
+          command: "echo hi",
+        },
+      },
+      {
+        id: "assistant-final-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:20Z",
+        message: {
+          id: "assistant-final" as never,
+          role: "assistant" as const,
+          text: "Done",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:20Z",
+          updatedAt: "2026-01-01T00:00:22Z",
+          streaming: false,
+        },
+      },
+    ];
+
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries,
+      embedAssistantTurnFold: true,
+      expandedTurnActivityIds: new Set(["turn-1" as never]),
+      activityOnlyExpand: true,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.map((row) => row.id)).toEqual(["user-entry", "assistant-final-entry"]);
+    const assistantRow = rows.find((row) => row.id === "assistant-final-entry");
+    expect(assistantRow?.kind === "message" && assistantRow.assistantTurnFold).toEqual(
+      expect.objectContaining({
+        turnId: "turn-1",
+        expanded: true,
+        showEmbeddedToolEntries: true,
+        showEmbeddedFullTurn: false,
+        toolEntries: [expect.objectContaining({ id: "work-1" })],
+      }),
+    );
+  });
+
+  it("embeds the full unfolded turn under the assistant header in chat layout v2", () => {
+    const timelineEntries = [
+      {
+        id: "user-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:00Z",
+        message: {
+          id: "user-1" as never,
+          role: "user" as const,
+          text: "Go",
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "assistant-thought-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:05Z",
+        message: {
+          id: "assistant-thought" as never,
+          role: "assistant" as const,
+          text: "I'll check first.",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:05Z",
+          updatedAt: "2026-01-01T00:00:06Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "work-entry-1",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:08Z",
+        entry: {
+          id: "work-1",
+          createdAt: "2026-01-01T00:00:08Z",
+          turnId: "turn-1" as never,
+          label: "Ran command",
+          tone: "tool" as const,
+          command: "echo hi",
+        },
+      },
+      {
+        id: "assistant-final-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:20Z",
+        message: {
+          id: "assistant-final" as never,
+          role: "assistant" as const,
+          text: "Done",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:20Z",
+          updatedAt: "2026-01-01T00:00:22Z",
+          streaming: false,
+        },
+      },
+    ];
+
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries,
+      embedAssistantTurnFold: true,
+      expandedTurnIds: new Set(["turn-1" as never]),
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.map((row) => row.id)).toEqual(["user-entry", "assistant-final-entry"]);
+    const assistantRow = rows.find((row) => row.id === "assistant-final-entry");
+    expect(assistantRow?.kind === "message" && assistantRow.assistantTurnFold).toEqual(
+      expect.objectContaining({
+        turnId: "turn-1",
+        expanded: true,
+        showEmbeddedFullTurn: true,
+        embeddedTurnItems: [
+          expect.objectContaining({ kind: "assistant-segment", text: "I'll check first." }),
+          expect.objectContaining({
+            kind: "work",
+            entry: expect.objectContaining({ id: "work-1" }),
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("anchors turn folds on the terminal assistant message, not the first hidden entry", () => {
+    const timelineEntries = [
+      {
+        id: "user-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:00Z",
+        message: {
+          id: "user-1" as never,
+          role: "user" as const,
+          text: "Go",
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "work-entry-1",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:05Z",
+        entry: {
+          id: "work-1",
+          createdAt: "2026-01-01T00:00:05Z",
+          turnId: "turn-1" as never,
+          label: "Ran command",
+          tone: "tool" as const,
+        },
+      },
+      {
+        id: "assistant-final-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:20Z",
+        message: {
+          id: "assistant-final" as never,
+          role: "assistant" as const,
+          text: "Done",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:20Z",
+          updatedAt: "2026-01-01T00:00:22Z",
+          streaming: false,
+        },
+      },
+    ];
+
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries,
+      embedAssistantTurnFold: true,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.map((row) => row.id)).toEqual(["user-entry", "assistant-final-entry"]);
+    const assistantRow = rows.find((row) => row.id === "assistant-final-entry");
+    expect(assistantRow?.kind === "message" && assistantRow.assistantTurnFold).toEqual(
+      expect.objectContaining({
+        turnId: "turn-1",
+        label: "Worked for 22s",
+        expanded: false,
+        showEmbeddedToolEntries: false,
+        showEmbeddedFullTurn: false,
+      }),
+    );
+    expect(
+      assistantRow?.kind === "message" && assistantRow.assistantTurnFold?.toolEntries,
+    ).toHaveLength(1);
+  });
+
+  it("summarizes tool activity as comma-separated action phrases", () => {
+    expect(
+      formatToolActivitySummary([
+        {
+          id: "1",
+          createdAt: "2026-01-01T00:00:00Z",
+          label: "Ran command",
+          tone: "tool",
+          command: "ls",
+        },
+        {
+          id: "2",
+          createdAt: "2026-01-01T00:00:01Z",
+          label: "Edited file",
+          tone: "tool",
+          changedFiles: ["src/a.ts"],
+        },
+      ]),
+    ).toBe("Edited a file, ran a command");
   });
 });

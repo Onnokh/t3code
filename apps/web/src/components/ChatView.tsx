@@ -218,6 +218,12 @@ import {
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { ComposerWorkingStatus } from "./chat/ComposerWorkingStatus";
+import {
+  CHAT_TOOL_ACTIVITY_PHASE_A,
+  CHAT_TOOL_ACTIVITY_PHASE_B,
+  CHAT_TOOL_ACTIVITY_PHASE_C,
+  deriveLiveTurnToolActivity,
+} from "./chat/MessagesTimeline.logic";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
@@ -2265,6 +2271,27 @@ function ChatViewContent(props: ChatViewProps) {
       deriveTimelineEntries(timelineMessages, activeThread?.proposedPlans ?? [], workLogEntries),
     [activeThread?.proposedPlans, timelineMessages, workLogEntries],
   );
+  const liveTurnToolActivity = useMemo(() => {
+    if (
+      !settings.chatLayoutV2Enabled ||
+      !CHAT_TOOL_ACTIVITY_PHASE_A ||
+      !CHAT_TOOL_ACTIVITY_PHASE_B
+    ) {
+      return null;
+    }
+    return deriveLiveTurnToolActivity({
+      timelineEntries,
+      latestTurn: activeLatestTurn,
+      runningTurnId:
+        activeThread?.session?.status === "running" ? activeThread.session.activeTurnId : null,
+    });
+  }, [
+    activeLatestTurn,
+    activeThread?.session?.activeTurnId,
+    activeThread?.session?.status,
+    settings.chatLayoutV2Enabled,
+    timelineEntries,
+  ]);
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
     activeThreadKey !== null && dockedDraftHeroThreadKey === activeThreadKey;
@@ -5824,6 +5851,12 @@ function ChatViewContent(props: ChatViewProps) {
                           modelLabel={timelineAssistantAuthor?.displayName ?? "Assistant"}
                           author={timelineAssistantAuthor}
                           startedAt={activeWorkStartedAt}
+                          liveToolActivity={liveTurnToolActivity}
+                          activityDrawerEnabled={
+                            settings.chatLayoutV2Enabled &&
+                            CHAT_TOOL_ACTIVITY_PHASE_A &&
+                            CHAT_TOOL_ACTIVITY_PHASE_C
+                          }
                         />
                       </div>
                     ) : null}
