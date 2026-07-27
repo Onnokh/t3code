@@ -26,6 +26,7 @@ import {
   type OpenCodeInventory,
 } from "../opencodeRuntime.ts";
 import { discoverOpenCodeSkills } from "../Drivers/OpenCodeSkills.ts";
+import { resolveOpenCodeRemoteDirectory } from "../openCodeRemoteDirectory.ts";
 import type { Agent, ProviderListResponse } from "@opencode-ai/sdk/v2";
 
 const OPENCODE_PRESENTATION = {
@@ -453,7 +454,7 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
             return yield* openCodeRuntime.loadOpenCodeInventory(
               openCodeRuntime.createOpenCodeSdkClient({
                 baseUrl: server.url,
-                directory: cwd,
+                directory: resolveOpenCodeRemoteDirectory(cwd, openCodeSettings),
                 ...(openCodeSettings.serverPassword
                   ? { serverPassword: openCodeSettings.serverPassword }
                   : {}),

@@ -124,6 +124,9 @@ const makeOpenCodeSettings = (overrides?: Partial<OpenCodeSettings>): OpenCodeSe
     binaryPath: "opencode",
     serverUrl: "",
     serverPassword: "",
+    workingDirectory: "",
+    localDirectoryRoot: "",
+    remoteDirectoryRoot: "",
     customModels: [],
     ...overrides,
   });

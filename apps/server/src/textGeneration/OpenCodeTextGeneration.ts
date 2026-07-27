@@ -30,6 +30,7 @@ import {
   sanitizePrTitle,
   sanitizeThreadTitle,
 } from "./TextGenerationUtils.ts";
+import { resolveOpenCodeRemoteDirectory } from "../provider/openCodeRemoteDirectory.ts";
 import * as OpenCodeRuntime from "../provider/opencodeRuntime.ts";
 
 const OPENCODE_TEXT_GENERATION_IDLE_TTL = "30 seconds";
@@ -384,7 +385,7 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       function* (server: Pick<OpenCodeRuntime.OpenCodeServerConnection, "url">) {
         const client = openCodeRuntime.createOpenCodeSdkClient({
           baseUrl: server.url,
-          directory: input.cwd,
+          directory: resolveOpenCodeRemoteDirectory(input.cwd, openCodeSettings),
           ...(openCodeSettings.serverUrl.length > 0 && openCodeSettings.serverPassword
             ? { serverPassword: openCodeSettings.serverPassword }
             : {}),

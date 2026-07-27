@@ -37,6 +37,7 @@ import {
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
 } from "../Errors.ts";
+import { resolveOpenCodeRemoteDirectory } from "../openCodeRemoteDirectory.ts";
 import { type OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
 import {
   buildOpenCodePermissionRules,
@@ -1189,7 +1190,10 @@ export function makeOpenCodeAdapter(
         const binaryPath = openCodeSettings.binaryPath;
         const serverUrl = openCodeSettings.serverUrl;
         const serverPassword = openCodeSettings.serverPassword;
-        const directory = input.cwd ?? serverConfig.cwd;
+        const directory = resolveOpenCodeRemoteDirectory(
+          input.cwd ?? serverConfig.cwd,
+          openCodeSettings,
+        );
         const resumeSessionId = parseOpenCodeResume(input.resumeCursor)?.sessionId;
         const existing = sessions.get(input.threadId);
         if (existing) {

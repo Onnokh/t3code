@@ -378,13 +378,55 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    workingDirectory: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Working directory",
+        description:
+          "When Server URL is set, remote root for the project: <this>/<local folder name> (e.g. /data/workspace + sleevy → /data/workspace/sleevy).",
+        providerSettingsForm: {
+          placeholder: "/data/workspace",
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
+    localDirectoryRoot: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Local directory root",
+        description:
+          "Optional. Map local projects under this prefix onto Remote directory root (ignored when Working directory is set).",
+        providerSettingsForm: {
+          placeholder: "/Users/you/dev/sites",
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
+    remoteDirectoryRoot: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Remote directory root",
+        description: "Optional. Remote counterpart of Local directory root (e.g. /data/workspace).",
+        providerSettingsForm: {
+          placeholder: "/data/workspace",
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
     customModels: Schema.Array(Schema.String).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
   {
-    order: ["binaryPath", "serverUrl", "serverPassword"],
+    order: [
+      "binaryPath",
+      "serverUrl",
+      "serverPassword",
+      "workingDirectory",
+      "localDirectoryRoot",
+      "remoteDirectoryRoot",
+    ],
   },
 );
 export type OpenCodeSettings = typeof OpenCodeSettings.Type;
@@ -533,6 +575,9 @@ const OpenCodeSettingsPatch = Schema.Struct({
   binaryPath: Schema.optionalKey(TrimmedString),
   serverUrl: Schema.optionalKey(TrimmedString),
   serverPassword: Schema.optionalKey(TrimmedString),
+  workingDirectory: Schema.optionalKey(TrimmedString),
+  localDirectoryRoot: Schema.optionalKey(TrimmedString),
+  remoteDirectoryRoot: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
