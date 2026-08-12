@@ -14,6 +14,7 @@ import { ConnectionSheetButton } from "./ConnectionSheetButton";
 import { extractPairingUrlFromQrPayload } from "./pairing";
 import { useRemoteConnections } from "../../state/use-remote-environment-registry";
 import { buildPairingUrl, parsePairingUrl } from "./pairing";
+import { DEVSKI_GATEWAY_URL } from "../../lib/devski";
 
 type ConnectionsNewRouteParams = {
   readonly mode?: string;
@@ -31,7 +32,7 @@ export function ConnectionsNewRouteScreen({
   const navigation = useNavigation();
   const params = route.params ?? {};
   const insets = useSafeAreaInsets();
-  const [hostInput, setHostInput] = useState("");
+  const [hostInput, setHostInput] = useState(DEVSKI_GATEWAY_URL);
   const [codeInput, setCodeInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showScanner, setShowScanner] = useState(params.mode === "scan_qr");
@@ -44,7 +45,7 @@ export function ConnectionsNewRouteScreen({
 
   useEffect(() => {
     const { host, code } = parsePairingUrl(connectionPairingUrl);
-    setHostInput(host);
+    setHostInput(host || DEVSKI_GATEWAY_URL);
     setCodeInput(code);
   }, [connectionPairingUrl]);
 
