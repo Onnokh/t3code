@@ -199,21 +199,21 @@ describe("serializeRelayClientTracingEnvironment", () => {
   });
 });
 
-describe("release workflow tracing config propagation", () => {
-  it.effect("uses an artifact instead of a masked cross-job token output", () =>
+describe("Devski release workflow tracing boundary", () => {
+  it.effect("does not carry relay deployment outputs into the app release", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const workflowPath = yield* path.fromFileUrl(
-        new URL("../../../.github/workflows/release.yml", import.meta.url),
+        new URL("../../../.github/workflows/devski-ios-release.yml", import.meta.url),
       );
       const workflow = yield* fileSystem.readFileString(workflowPath);
 
       expect(workflow).not.toContain("client_tracing_token:");
       expect(workflow).not.toContain("needs.relay_public_config.outputs.client_tracing_token");
-      expect(workflow).toContain('--github-env-file "$RUNNER_TEMP/relay-client-tracing.env"');
-      expect(workflow).toContain("name: relay-client-tracing-config");
-      expect(workflow).toContain('cat "$config_path" >> "$GITHUB_ENV"');
+      expect(workflow).not.toContain("relay-client-tracing");
+      expect(workflow).toContain("name: Devski iOS Release");
+      expect(workflow).toContain("profile devski-production");
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 });

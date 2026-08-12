@@ -6,7 +6,7 @@ import { StatusBar, useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { createStaticNavigation, DarkTheme, DefaultTheme } from "@react-navigation/native";
+import { DarkTheme, DefaultTheme } from "@react-navigation/native";
 
 import { RegistryContext } from "@effect/atom-react";
 import { ConfirmDialogHost } from "./components/ConfirmDialogHost";
@@ -17,7 +17,7 @@ import {
   AppearancePreferencesProvider,
   useAppearancePreferences,
 } from "./features/settings/appearance/AppearancePreferencesProvider";
-import { RootStack } from "./Stack";
+import { DevskiRootShell } from "./features/devski/DevskiRootShell";
 import { appAtomRegistry } from "./state/atom-registry";
 import { OverlayPortalHost } from "./components/OverlayPortal";
 import { appBlurTargetRef } from "./lib/appBlurTarget";
@@ -34,7 +34,7 @@ void SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 const appLinking = {
-  prefixes: [Linking.createURL("/"), "t3code://", "t3code-dev://", "t3code-preview://"],
+  prefixes: [Linking.createURL("/"), "devski://", "devski.dev://", "devski.preview://"],
   // The Expo dev client launches the app via
   // <scheme>://expo-development-client/?url=<packager> — that URL addresses
   // the launcher, not app navigation. Without this filter it falls through
@@ -44,8 +44,6 @@ const appLinking = {
   filter: (url: string) =>
     !url.includes("expo-development-client") && !url.includes("://expo-sharing"),
 };
-
-const Navigation = createStaticNavigation(RootStack);
 
 function SplashScreenCoordinator() {
   const { isReady } = useAppearancePreferences();
@@ -82,7 +80,7 @@ export default function App() {
                 {/* Blur target for Android dropdown backdrops — see appBlurTarget.ts. */}
                 <BlurTargetView ref={appBlurTargetRef} style={{ flex: 1 }}>
                   <IncomingShareProvider>
-                    <Navigation
+                    <DevskiRootShell
                       linking={appLinking}
                       theme={colorScheme === "dark" ? DarkTheme : DefaultTheme}
                     />

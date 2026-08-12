@@ -1,0 +1,44 @@
+name: Devski iOS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type RELEASE_DEVSKI to authorize the protected release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: github.repository == 'Onnokh/t3code' && github.ref == 'refs/heads/main' && inputs.confirmation == 'RELEASE_DEVSKI'
+    runs-on: macos-26
+    environment: devski-production
+    timeout-minutes: 45
+    env:
+      NODE_OPTIONS: --max-old-space-size=8192
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=@t3tools/mobile...
+              - --filter=@t3tools/scripts...
+
+      - name: Verify resolved Devski release configuration
+        working-directory: apps/mobile
+        run: pnpm verify:release
+
+      - name: Build and submit the protected iOS release
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.DEVSKI_EXPO_TOKEN }}
+        run: eas build --platform ios --profile devski-production --auto-submit --non-interactive

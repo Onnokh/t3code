@@ -1,4 +1,4 @@
-# T3 Code Mobile
+# Devski Mobile
 
 > [!WARNING]
 > T3 Code Mobile is currently in development and is not distributed yet. If you want to try it out, you can build it from source.
@@ -8,15 +8,16 @@
 > [!NOTE]
 > Uses native modules so using Expo Go is not supported. You need to use the Expo Dev Client.
 
-This app has three variants:
+This app has three Devski variants:
 
-- `development`: Expo dev client, installable side-by-side as `T3 Code Dev`
-- `preview`: persistent internal preview build, installable side-by-side as `T3 Code Preview`
-- `production`: store/release build as `T3 Code`
+- `development`: Expo dev client, installable side-by-side as `Devski Dev`
+- `preview`: persistent internal preview build, installable side-by-side as `Devski Preview`
+- `production`: iOS TestFlight build as `Devski`
 
 Run commands from `apps/mobile`.
 
-T3 Connect is optional and disabled in a fresh clone. Public configuration belongs in the
+The production app uses the Devski Gateway at `https://devski.onkie.dev` and does not include
+T3 Clerk or Expo update configuration. Public development configuration belongs in the
 repository-root `.env` or `.env.local`, not an `apps/mobile/.env` file. See
 [`../../.env.example`](../../.env.example).
 
@@ -39,8 +40,8 @@ reduced-capability local build. Personal Team builds omit the widget and share e
 entitlement, and native Sign in with Apple entitlement; builds without this opt-in are unchanged.
 
 ```bash
-T3CODE_IOS_PERSONAL_TEAM=1 \
-T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code.dev \
+DEVSKI_IOS_PERSONAL_TEAM=1 \
+DEVSKI_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.devski.dev \
 vp run ios:dev
 ```
 
@@ -53,8 +54,8 @@ vp run ios:release
 The Personal Team equivalent also needs a unique bundle identifier:
 
 ```bash
-T3CODE_IOS_PERSONAL_TEAM=1 \
-T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code \
+DEVSKI_IOS_PERSONAL_TEAM=1 \
+DEVSKI_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.devski \
 vp run ios:release
 ```
 
@@ -72,11 +73,12 @@ EXPO_PUBLIC_REVIEW_HIGHLIGHTER_ENGINE=javascript vp run ios:dev
 
 `javascript` is the default and recommended setting for the review diff screen. Set `EXPO_PUBLIC_REVIEW_HIGHLIGHTER_ENGINE=native` only when you explicitly want to test the native Shiki engine.
 
-Inspect the resolved Expo config for a variant:
+Inspect the resolved Expo config and release guard:
 
 ```bash
 vp run config:dev
 vp run config:preview
+pnpm verify:release
 ```
 
 Run static checks for mobile native code:
@@ -89,11 +91,9 @@ The native lint task runs SwiftLint for Swift plus ktlint and detekt for Kotlin.
 
 ## EAS Builds
 
-CI uses Expo fingerprinting with the `preview:dev` profile to reuse an existing compatible build when possible, or start a new internal EAS build when native runtime inputs change. Production and default local builds continue to use the `appVersion` runtime policy.
-
-For preview or production EAS environments, set `T3CODE_CLERK_PUBLISHABLE_KEY`,
-`T3CODE_CLERK_JWT_TEMPLATE`, and `T3CODE_RELAY_URL`
-as EAS environment variables. Expo config maps the canonical values into the mobile build.
+Preview builds are for local validation. Production OTA updates are disabled. TestFlight
+publication is allowed only through the protected, manually dispatched
+`.github/workflows/devski-ios-release.yml` workflow and its `devski-production` environment.
 
 Create a PR preview dev-client build manually:
 
@@ -111,12 +111,4 @@ Create a persistent preview build:
 
 ```bash
 vp run eas:ios:preview
-```
-
-Android equivalents:
-
-```bash
-vp run eas:android:dev
-vp run eas:android:preview:dev
-vp run eas:android:preview
 ```

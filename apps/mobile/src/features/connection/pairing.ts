@@ -2,6 +2,12 @@ import { readHostedPairingRequest } from "@t3tools/shared/remote";
 import * as Schema from "effect/Schema";
 
 const MOBILE_PAIRING_URL_PARAM = "pairingUrl";
+const MOBILE_DEEP_LINK_PROTOCOLS = new Set([
+  "devski:",
+  "devski.dev:",
+  "devski.preview:",
+  "t3code:",
+]);
 
 function isIpLiteral(host: string): boolean {
   try {
@@ -78,7 +84,7 @@ export function extractPairingUrlFromQrPayload(payload: string): string {
 
   try {
     const url = new URL(trimmed);
-    if (url.protocol === "t3code:") {
+    if (MOBILE_DEEP_LINK_PROTOCOLS.has(url.protocol)) {
       const pairingUrl = url.searchParams.get(MOBILE_PAIRING_URL_PARAM)?.trim() ?? "";
       if (pairingUrl.length > 0) {
         return pairingUrl;
