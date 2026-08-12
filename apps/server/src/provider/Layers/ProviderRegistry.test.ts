@@ -1586,10 +1586,16 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               ),
             ),
             Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
-            Layer.updateService(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
+            Layer.updateService(ChildProcessSpawner.ChildProcessSpawner, () =>
               ChildProcessSpawner.make((command) => {
                 spawnedCommands.push((command as { readonly command: string }).command);
-                return spawner.spawn(command);
+                return Effect.fail(
+                  PlatformError.systemError({
+                    _tag: "NotFound",
+                    module: "ChildProcess",
+                    method: "spawn",
+                  }),
+                );
               }),
             ),
             Layer.provideMerge(NodeServices.layer),
@@ -1602,7 +1608,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           yield* Effect.gen(function* () {
             const registry = yield* ProviderRegistry.ProviderRegistry;
             // Boot-time probe: the default codex instance is enabled with
-            // `firstMissing`, so the real spawner yields ENOENT and the
+            // `firstMissing`, so the test spawner returns NotFound and the
             // snapshot should be `status: "error"`.
             let initialProviders = yield* registry.getProviders;
             for (
