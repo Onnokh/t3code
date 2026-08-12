@@ -5,8 +5,9 @@ import { createStaticNavigation } from "@react-navigation/native";
 
 import { AppText as Text } from "../../components/AppText";
 import { EmptyState } from "../../components/EmptyState";
-import { useRemoteConnectionStatus } from "../../state/use-remote-environment-registry";
 import { RootStack } from "../../Stack";
+import { useRemoteConnectionStatus } from "../../state/use-remote-environment-registry";
+import { useDevskiGateway, type DevskiGatewayState } from "./gateway";
 
 const Navigation = createStaticNavigation(RootStack);
 type NavigationProps = ComponentProps<typeof Navigation>;
@@ -22,6 +23,7 @@ const TAB_LABELS: ReadonlyArray<{ readonly key: DevskiTab; readonly label: strin
 export function DevskiRootShell(props: Pick<NavigationProps, "linking" | "theme">) {
   const [selectedTab, setSelectedTab] = useState<DevskiTab>("code");
   const insets = useSafeAreaInsets();
+  const gateway = useDevskiGateway();
 
   return (
     <View className="flex-1 bg-screen">
@@ -34,7 +36,11 @@ export function DevskiRootShell(props: Pick<NavigationProps, "linking" | "theme"
           style={{ display: selectedTab === "seo" ? "flex" : "none" }}
           accessibilityElementsHidden={selectedTab !== "seo"}
         >
-          <DevskiPlaceholderScreen area="SEO" detail="Read-only Ranksta data will appear here." />
+          <DevskiPlaceholderScreen
+            area="SEO"
+            detail="Read-only Ranksta data will appear here."
+            gateway={gateway}
+          />
         </View>
         <View
           className="flex-1"
@@ -44,6 +50,7 @@ export function DevskiRootShell(props: Pick<NavigationProps, "linking" | "theme"
           <DevskiPlaceholderScreen
             area="Automations"
             detail="Harness Jobs and Runs will appear here."
+            gateway={gateway}
           />
         </View>
       </View>
@@ -77,6 +84,7 @@ export function DevskiRootShell(props: Pick<NavigationProps, "linking" | "theme"
 function DevskiPlaceholderScreen(props: {
   readonly area: "SEO" | "Automations";
   readonly detail: string;
+  readonly gateway: DevskiGatewayState;
 }) {
   const { connectedEnvironments, connectionError, connectionState } = useRemoteConnectionStatus();
   const connectionSummary =
@@ -84,6 +92,7 @@ function DevskiPlaceholderScreen(props: {
     (connectedEnvironments.length === 0
       ? "No Code environment is paired on this device."
       : `${connectedEnvironments.length} Code environment${connectedEnvironments.length === 1 ? "" : "s"} available (${connectionState}).`);
+  const serviceKey = props.area === "SEO" ? "seo" : "automations";
 
   return (
     <ScrollView
@@ -95,10 +104,17 @@ function DevskiPlaceholderScreen(props: {
       <Text className="text-sm leading-normal text-foreground-muted">{props.detail}</Text>
       <Text className="mt-2 font-t3-bold text-foreground">Digital Home connection</Text>
       <Text className="text-sm leading-normal text-foreground-muted">{connectionSummary}</Text>
+      <Text className="font-t3-bold text-foreground">Gateway service health</Text>
+      <Text className="text-sm leading-normal text-foreground-muted">{props.gateway.message}</Text>
+      {props.gateway.status === "ready" ? (
+        <Text className="text-sm leading-normal text-foreground-muted">
+          {props.area}: {props.gateway.capabilities.capabilities[serviceKey].status}.
+        </Text>
+      ) : null}
       <EmptyState
         variant="plain"
         title={`${props.area} is coming next`}
-        detail="This functional shell is ready for the Gateway adapter."
+        detail="This functional shell uses the same paired Device Session as Code."
       />
     </ScrollView>
   );
