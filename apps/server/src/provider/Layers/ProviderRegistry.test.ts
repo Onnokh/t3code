@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, it, assert } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -308,6 +309,7 @@ function makeCodexProbeSnapshot(
 
 function makeMutableServerSettingsService(
   initial: ContractServerSettings = DEFAULT_SERVER_SETTINGS,
+  streamGate?: Deferred.Deferred<void>,
 ) {
   return Effect.gen(function* () {
     const settingsRef = yield* Ref.make(initial);
@@ -327,7 +329,10 @@ function makeMutableServerSettingsService(
           return next;
         }),
       get streamChanges() {
-        return Stream.fromPubSub(changes);
+        const stream = Stream.fromPubSub(changes);
+        return streamGate === undefined
+          ? stream
+          : Stream.unwrap(Deferred.await(streamGate).pipe(Effect.as(stream)));
       },
       get subscribeChanges() {
         return PubSub.subscribe(changes).pipe(
@@ -1546,6 +1551,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           const firstMissing = `t3code_codex_first_`;
           const secondMissing = `t3code_codex_second_`;
           const spawnedCommands: Array<string> = [];
+          const streamGate = yield* Deferred.make<void>();
+          const secondProbeStarted = yield* Deferred.make<void>();
           const serverSettings = yield* makeMutableServerSettingsService(
             decodeServerSettings(
               deepMerge(encodedDefaultServerSettings, {
@@ -1558,6 +1565,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 },
               }),
             ),
+            streamGate,
           );
           const scope = yield* Scope.make();
           yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
@@ -1579,10 +1587,25 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               ),
             ),
             Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
-            Layer.updateService(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
+            Layer.updateService(ChildProcessSpawner.ChildProcessSpawner, () =>
               ChildProcessSpawner.make((command) => {
-                spawnedCommands.push((command as { readonly command: string }).command);
-                return spawner.spawn(command);
+                const executable = (command as { readonly command: string }).command;
+                spawnedCommands.push(executable);
+                const signalSecondProbe =
+                  executable === secondMissing
+                    ? Deferred.succeed(secondProbeStarted, undefined)
+                    : Effect.void;
+                return signalSecondProbe.pipe(
+                  Effect.andThen(
+                    Effect.fail(
+                      PlatformError.systemError({
+                        _tag: "NotFound",
+                        module: "ChildProcess",
+                        method: "spawn",
+                      }),
+                    ),
+                  ),
+                );
               }),
             ),
             Layer.provideMerge(NodeServices.layer),
@@ -1595,7 +1618,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           yield* Effect.gen(function* () {
             const registry = yield* ProviderRegistry.ProviderRegistry;
             // Boot-time probe: the default codex instance is enabled with
-            // `firstMissing`, so the real spawner yields ENOENT and the
+            // `firstMissing`, so the test spawner returns NotFound and the
             // snapshot should be `status: "error"`.
             let initialProviders = yield* registry.getProviders;
             for (
@@ -1616,8 +1639,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             assert.strictEqual(initialCodex?.installed, false);
             assert.deepStrictEqual(spawnedCommands, [firstMissing]);
 
-            // Drive a settings change. The Hydration layer's
-            // `SettingsWatcherLive` consumes this via `streamChanges`,
+            // Keep the lazy stream closed until after this publish. The
+            // synchronous subscription must still receive the change.
+            // `SettingsWatcherLive` consumes this via `subscribeChanges`,
             // calls `reconcile`, which rebuilds the codex instance (the
             // envelope changed because `binaryPath` differs → `entryEqual`
             // is false). The registry's `Stream.runForEach(
@@ -1629,26 +1653,14 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 codex: { enabled: true, binaryPath: secondMissing },
               },
             });
+            yield* Deferred.succeed(streamGate, undefined);
 
-            // Poll until the injected process boundary observes the new
-            // executable. This verifies the public settings-to-probe behavior
-            // without depending on timestamps assigned by TestClock.
-            const refreshed = yield* Effect.gen(function* () {
-              for (let attempts = 0; attempts < 60; attempts += 1) {
-                const providers = yield* registry.getProviders;
-                const codex = providers.find((provider) => provider.instanceId === "codex");
-                if (
-                  codex !== undefined &&
-                  codex.status === "error" &&
-                  spawnedCommands.includes(secondMissing)
-                ) {
-                  return providers;
-                }
-                yield* TestClock.adjust("50 millis");
-                yield* Effect.yieldNow;
-              }
-              return yield* registry.getProviders;
-            });
+            // Suspend until the injected process boundary observes the new
+            // executable. Unlike a bounded yield loop, this gives the watcher
+            // and registry fibers a deterministic scheduling point even when
+            // the complete suite is contending for the Linux runner.
+            yield* Deferred.await(secondProbeStarted);
+            const refreshed = yield* registry.getProviders;
 
             const reprobedCodex = refreshed.find((provider) => provider.instanceId === "codex");
             assert.deepStrictEqual(spawnedCommands, [firstMissing, secondMissing]);
