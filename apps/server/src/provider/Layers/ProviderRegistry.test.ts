@@ -1552,6 +1552,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           const secondMissing = `t3code_codex_second_`;
           const spawnedCommands: Array<string> = [];
           const streamGate = yield* Deferred.make<void>();
+          const secondProbeStarted = yield* Deferred.make<void>();
           const serverSettings = yield* makeMutableServerSettingsService(
             decodeServerSettings(
               deepMerge(encodedDefaultServerSettings, {
@@ -1588,13 +1589,22 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
             Layer.updateService(ChildProcessSpawner.ChildProcessSpawner, () =>
               ChildProcessSpawner.make((command) => {
-                spawnedCommands.push((command as { readonly command: string }).command);
-                return Effect.fail(
-                  PlatformError.systemError({
-                    _tag: "NotFound",
-                    module: "ChildProcess",
-                    method: "spawn",
-                  }),
+                const executable = (command as { readonly command: string }).command;
+                spawnedCommands.push(executable);
+                const signalSecondProbe =
+                  executable === secondMissing
+                    ? Deferred.succeed(secondProbeStarted, undefined)
+                    : Effect.void;
+                return signalSecondProbe.pipe(
+                  Effect.andThen(
+                    Effect.fail(
+                      PlatformError.systemError({
+                        _tag: "NotFound",
+                        module: "ChildProcess",
+                        method: "spawn",
+                      }),
+                    ),
+                  ),
                 );
               }),
             ),
@@ -1645,25 +1655,12 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             });
             yield* Deferred.succeed(streamGate, undefined);
 
-            // Poll until the injected process boundary observes the new
-            // executable. This verifies the public settings-to-probe behavior
-            // without depending on timestamps assigned by TestClock.
-            const refreshed = yield* Effect.gen(function* () {
-              for (let attempts = 0; attempts < 60; attempts += 1) {
-                const providers = yield* registry.getProviders;
-                const codex = providers.find((provider) => provider.instanceId === "codex");
-                if (
-                  codex !== undefined &&
-                  codex.status === "error" &&
-                  spawnedCommands.includes(secondMissing)
-                ) {
-                  return providers;
-                }
-                yield* TestClock.adjust("50 millis");
-                yield* Effect.yieldNow;
-              }
-              return yield* registry.getProviders;
-            });
+            // Suspend until the injected process boundary observes the new
+            // executable. Unlike a bounded yield loop, this gives the watcher
+            // and registry fibers a deterministic scheduling point even when
+            // the complete suite is contending for the Linux runner.
+            yield* Deferred.await(secondProbeStarted);
+            const refreshed = yield* registry.getProviders;
 
             const reprobedCodex = refreshed.find((provider) => provider.instanceId === "codex");
             assert.deepStrictEqual(spawnedCommands, [firstMissing, secondMissing]);
