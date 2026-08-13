@@ -166,4 +166,4 @@ jobs:
         run: node scripts/release-smoke.ts
 
       - name: Verify Devski release safety
-        run: pnpm --dir apps/mobile verify:release
+        run: vp run --filter @t3tools/mobile verify:release

@@ -173,7 +173,7 @@ export function findWorkflowSafetyViolations(
     ) {
       violations.push("devski-ios-release.yml must be manually dispatched only");
     }
-    if (!/github\.repository\s*==\s*['\"]Onnokh\/t3code['\"]/.test(workflow.source)) {
+    if (!/github\.repository\s*==\s*['"]Onnokh\/t3code['"]/.test(workflow.source)) {
       violations.push("devski-ios-release.yml must be restricted to the Devski T3 repository");
     }
     if (!/environment:\s*devski-production\b/.test(workflow.source)) {
