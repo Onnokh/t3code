@@ -37,7 +37,10 @@ export const make = MobileSecureStorage.of({
   ),
   setItem: Effect.fn("MobileSecureStorage.setItem")((key, value) =>
     Effect.tryPromise({
-      try: () => SecureStore.setItemAsync(key, value),
+      try: () =>
+        SecureStore.setItemAsync(key, value, {
+          keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+        }),
       catch: (cause) => new MobileSecureStorageError({ operation: "write", key, cause }),
     }),
   ),

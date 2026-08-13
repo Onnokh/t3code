@@ -5,6 +5,7 @@ import * as Option from "effect/Option";
 import { BearerConnectionProfile, type ConnectionCatalogEntry } from "./catalog.ts";
 import {
   BearerConnectionTarget,
+  ConnectionBlockedError,
   ConnectionTransientError,
   type SupervisorConnectionState,
 } from "./model.ts";
@@ -60,6 +61,7 @@ describe("connection presentation", () => {
       phase: "connecting",
       error: null,
       traceId: null,
+      failureReason: null,
     });
     expect(
       presentConnectionState(
@@ -77,6 +79,7 @@ describe("connection presentation", () => {
       phase: "reconnecting",
       error: "Socket closed.",
       traceId: "trace-previous",
+      failureReason: "transport",
     });
     expect(
       presentConnectionState(
@@ -95,6 +98,7 @@ describe("connection presentation", () => {
       phase: "reconnecting",
       error: "Disconnected.",
       traceId: "trace-1",
+      failureReason: "transport",
     });
   });
 
@@ -116,7 +120,22 @@ describe("connection presentation", () => {
       phase: "reconnecting",
       error: "Relay connection timed out.",
       traceId: "trace-retry",
+      failureReason: "transport",
     });
+  });
+
+  it("exposes authentication failures so hosts can clear expired credentials", () => {
+    expect(
+      presentEnvironmentConnection(
+        supervisorState({
+          phase: "blocked",
+          lastFailure: new ConnectionBlockedError({
+            reason: "authentication",
+            detail: "The environment credential is invalid.",
+          }),
+        }),
+      ).failureReason,
+    ).toBe("authentication");
   });
 
   it("gives offline status precedence in global messaging", () => {
@@ -148,6 +167,7 @@ describe("connection presentation", () => {
       phase: "offline",
       error: null,
       traceId: null,
+      failureReason: null,
     });
   });
 
@@ -164,6 +184,7 @@ describe("connection presentation", () => {
       phase: "connected",
       error: null,
       traceId: null,
+      failureReason: null,
     });
   });
 
@@ -182,6 +203,7 @@ describe("connection presentation", () => {
       phase: "available",
       error: null,
       traceId: null,
+      failureReason: null,
     });
   });
 });

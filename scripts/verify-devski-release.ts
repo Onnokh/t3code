@@ -5,7 +5,9 @@ import * as NodeChildProcess from "node:child_process";
 
 import {
   assertDevskiConfigIsSafe,
+  assertDevskiEasConfigIsSafe,
   assertWorkflowSourcesAreSafe,
+  type ResolvedEasConfig,
   type ResolvedExpoConfig,
   type WorkflowSource,
 } from "./lib/devski-release-safety.ts";
@@ -23,6 +25,11 @@ const resolvedConfig = JSON.parse(
 
 assertDevskiConfigIsSafe(resolvedConfig);
 
+const easConfig = JSON.parse(
+  NodeFS.readFileSync(NodePath.join(mobileRoot, "eas.json"), "utf8"),
+) as ResolvedEasConfig;
+assertDevskiEasConfigIsSafe(easConfig);
+
 const workflowsRoot = NodePath.join(repoRoot, ".github/workflows");
 const workflows: WorkflowSource[] = NodeFS.readdirSync(workflowsRoot)
   .filter((fileName) => fileName.endsWith(".yml") || fileName.endsWith(".yaml"))
@@ -32,4 +39,4 @@ const workflows: WorkflowSource[] = NodeFS.readdirSync(workflowsRoot)
   }));
 
 assertWorkflowSourcesAreSafe(workflows);
-console.log("Devski production config and publishing workflows are release-safe.");
+console.log("Devski production Expo/EAS config and publishing workflows are release-safe.");

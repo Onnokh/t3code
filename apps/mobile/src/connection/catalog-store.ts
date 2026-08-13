@@ -13,7 +13,8 @@ import * as Semaphore from "effect/Semaphore";
 import * as MobileSecureStorage from "../persistence/mobile-secure-storage";
 import { migrateLegacyConnectionCatalog } from "./migration";
 
-export const CONNECTION_CATALOG_KEY = "t3code.connection-catalog.v1";
+export const CONNECTION_CATALOG_KEY = "t3code.connection-catalog.v2";
+export const PREVIOUS_CONNECTION_CATALOG_KEY = "t3code.connection-catalog.v1";
 export const LEGACY_CONNECTIONS_KEY = "t3code.connections";
 
 function catalogError(operation: string, cause: unknown) {
@@ -80,6 +81,27 @@ export const make = Effect.fn("mobile.connectionStorage.makeCatalogStore")(funct
     return catalog;
   });
 
+  const loadPreviousCatalog = Effect.fn("mobile.connectionStorage.loadPreviousCatalog")(
+    function* () {
+      const previousRaw = yield* getItem(PREVIOUS_CONNECTION_CATALOG_KEY);
+      if (previousRaw === null || previousRaw.trim() === "") {
+        return yield* loadLegacyCatalog();
+      }
+      const catalog = yield* decodeCatalog(previousRaw).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("Discarding corrupt previous mobile connection catalog", error).pipe(
+            Effect.andThen(deleteItem(PREVIOUS_CONNECTION_CATALOG_KEY)),
+            Effect.andThen(loadLegacyCatalog()),
+          ),
+        ),
+      );
+      const encoded = yield* encodeCatalog(catalog);
+      yield* setItem(CONNECTION_CATALOG_KEY, encoded);
+      yield* deleteItem(PREVIOUS_CONNECTION_CATALOG_KEY);
+      return catalog;
+    },
+  );
+
   const loadUnlocked = Effect.fn("mobile.connectionStorage.loadCatalog")(function* () {
     const cached = yield* Ref.get(state);
     if (Option.isSome(cached)) {
@@ -96,8 +118,11 @@ export const make = Effect.fn("mobile.connectionStorage.makeCatalogStore")(funct
           ),
         ),
       );
+      if ((yield* getItem(PREVIOUS_CONNECTION_CATALOG_KEY)) !== null) {
+        yield* deleteItem(PREVIOUS_CONNECTION_CATALOG_KEY);
+      }
     } else {
-      catalog = yield* loadLegacyCatalog();
+      catalog = yield* loadPreviousCatalog();
     }
     yield* Ref.set(state, Option.some(catalog));
     return catalog;
