@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off - Release guard runs as a host-side Node CLI.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import { execFileSync } from "node:child_process";
+import * as NodeChildProcess from "node:child_process";
 
 import {
   assertDevskiConfigIsSafe,
@@ -14,7 +14,7 @@ const repoRoot = NodePath.resolve(import.meta.dirname, "..");
 const mobileRoot = NodePath.join(repoRoot, "apps/mobile");
 
 const resolvedConfig = JSON.parse(
-  execFileSync("pnpm", ["exec", "expo", "config", "--json", "--type", "public"], {
+  NodeChildProcess.execFileSync("pnpm", ["exec", "expo", "config", "--json", "--type", "public"], {
     cwd: mobileRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],
