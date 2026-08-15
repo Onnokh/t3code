@@ -114,10 +114,34 @@ describe("Devski workflow guard", () => {
         {
           path: ".github/workflows/devski-ios.yml",
           source:
-            "on:\n  workflow_dispatch:\njobs:\n  build:\n    if: github.repository == 'Onnokh/t3code'\n    environment: devski-production\n    env:\n      EXPO_TOKEN: ${{ secrets.DEVSKI_EXPO_TOKEN }}\n    run: eas build --platform ios --profile devski-production --auto-submit --non-interactive",
+            "on:\n  workflow_dispatch:\njobs:\n  build:\n    if: github.repository == 'Onnokh/t3code' && github.ref == 'refs/heads/main'\n    environment: devski-production\n    env:\n      EXPO_TOKEN: ${{ secrets.DEVSKI_EXPO_TOKEN }}\n    run: eas build --platform ios --profile devski-production --auto-submit --non-interactive",
         },
       ]),
     ).toEqual([]);
+  });
+
+  it("rejects a release workflow without the fork-main release-source guard", () => {
+    expect(
+      findWorkflowSafetyViolations([
+        {
+          path: ".github/workflows/devski-ios.yml",
+          source:
+            "on:\n  workflow_dispatch:\njobs:\n  build:\n    if: github.repository == 'Onnokh/t3code'\n    environment: devski-production\n    env:\n      EXPO_TOKEN: ${{ secrets.DEVSKI_EXPO_TOKEN }}\n    run: eas build --platform ios --profile devski-production --auto-submit --non-interactive",
+        },
+      ]),
+    ).toContain("devski-ios.yml must build only from fork main (release-source guard)");
+  });
+
+  it("rejects a release workflow that also reacts to pushes or pull requests", () => {
+    expect(
+      findWorkflowSafetyViolations([
+        {
+          path: ".github/workflows/devski-ios.yml",
+          source:
+            "on:\n  workflow_dispatch:\n  pull_request:\njobs:\n  build:\n    if: github.repository == 'Onnokh/t3code' && github.ref == 'refs/heads/main'\n    environment: devski-production\n    env:\n      EXPO_TOKEN: ${{ secrets.DEVSKI_EXPO_TOKEN }}\n    run: eas build --platform ios --profile devski-production --auto-submit --non-interactive",
+        },
+      ]),
+    ).toContain("devski-ios.yml must be manually dispatched only");
   });
 
   it("rejects extra stateful commands in the release workflow", () => {

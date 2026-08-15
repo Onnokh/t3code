@@ -102,6 +102,13 @@ Coolify configuration for the private T3 application:
   state), `/workspaces/code` (Code Workspace Root);
 - health check: `GET /.well-known/t3/environment` on port `3773`.
 
+T3 also serves `GET /healthz/agent-runtimes` on the private port: a
+credential-free probe that projects the provider snapshots into one status
+enum per Agent Runtime (`claude`, `opencode2`). The Devski Gateway uses it
+to distinguish a Claude failure from an interactive OpenCode 2 failure in
+its readiness and capability surfaces. It reports status enums only and is
+deliberately absent from the Gateway's public pass-through allowlist.
+
 Coolify configuration for the private OpenCode 2 sidecar:
 
 - same repository revision, Dockerfile location

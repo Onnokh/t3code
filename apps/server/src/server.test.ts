@@ -1477,6 +1477,56 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("serves per-Agent-Runtime health on the private probe without requiring auth", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          providerRegistry: {
+            getProviders: Effect.succeed([
+              {
+                instanceId: ProviderInstanceId.make("claude"),
+                driver: ProviderDriverKind.make("claudeAgent"),
+                enabled: true,
+                installed: true,
+                version: "2.1.231",
+                status: "error" as const,
+                auth: { status: "unauthenticated" as const },
+                checkedAt: "2026-08-15T00:00:00.000Z",
+                models: [],
+                slashCommands: [],
+                skills: [],
+              },
+              {
+                instanceId: ProviderInstanceId.make("opencode2"),
+                driver: ProviderDriverKind.make("opencode2"),
+                enabled: true,
+                installed: true,
+                version: "0.0.0-next-17199",
+                status: "ready" as const,
+                auth: { status: "authenticated" as const },
+                checkedAt: "2026-08-15T00:00:00.000Z",
+                models: [],
+                slashCommands: [],
+                skills: [],
+              },
+            ]),
+          },
+        },
+      });
+
+      const url = yield* getHttpServerUrl("/healthz/agent-runtimes");
+      const response = yield* fetchEffect(url);
+      const body = yield* responseJsonEffect<{
+        readonly runtimes: { readonly claude: string; readonly opencode2: string };
+      }>(response);
+
+      assert.equal(response.status, 200);
+      // A Claude failure stays distinguishable from a healthy OpenCode 2
+      // runtime through the probe the Devski Gateway consumes.
+      assert.deepEqual(body, { runtimes: { claude: "error", opencode2: "ready" } });
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("compresses large JSON responses through the composed routes", () =>
     Effect.gen(function* () {
       const descriptor = {

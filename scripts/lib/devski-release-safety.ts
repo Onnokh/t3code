@@ -220,12 +220,15 @@ export function findWorkflowSafetyViolations(
     }
     if (
       !/^\s*workflow_dispatch:/m.test(workflow.source) ||
-      /^\s*(?:push|schedule):/m.test(workflow.source)
+      /^\s*(?:push|schedule|pull_request|pull_request_target):/m.test(workflow.source)
     ) {
       violations.push("devski-ios.yml must be manually dispatched only");
     }
     if (!/github\.repository\s*==\s*['"]Onnokh\/t3code['"]/.test(workflow.source)) {
       violations.push("devski-ios.yml must be restricted to the Devski T3 repository");
+    }
+    if (!/github\.ref\s*==\s*['"]refs\/heads\/main['"]/.test(workflow.source)) {
+      violations.push("devski-ios.yml must build only from fork main (release-source guard)");
     }
     if (!/environment:\s*devski-production\b/.test(workflow.source)) {
       violations.push("devski-ios.yml must use the protected devski-production environment");

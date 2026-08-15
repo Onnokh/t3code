@@ -39,6 +39,8 @@ import {
 } from "./auth/http.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import { browserApiCorsAllowedHeaders, browserApiCorsAllowedMethods } from "./httpCors.ts";
+import { projectAgentRuntimeHealth } from "./provider/agentRuntimeHealth.ts";
+import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -192,6 +194,29 @@ export const otlpTracesProxyRouteLayer = HttpRouter.add(
       EnvironmentScopeRequiredError: HttpServerRespondable.toResponse,
     }),
   ),
+);
+
+/**
+ * Unauthenticated per-Agent-Runtime health probe for the private port.
+ *
+ * The Devski Gateway calls this on the internal network to distinguish a
+ * Claude runtime failure from an interactive OpenCode 2 failure in its
+ * readiness and capability surfaces (deployment-topology health contract).
+ * The response carries status enums only — never versions, accounts,
+ * messages, or credentials — and the route is deliberately absent from the
+ * Gateway's public pass-through allowlist, so it stays private.
+ */
+export const agentRuntimeHealthRouteLayer = HttpRouter.add(
+  "GET",
+  "/healthz/agent-runtimes",
+  Effect.gen(function* () {
+    const registry = yield* ProviderRegistry.ProviderRegistry;
+    const providers = yield* registry.getProviders;
+    return HttpServerResponse.jsonUnsafe(
+      { runtimes: projectAgentRuntimeHealth(providers) },
+      { headers: { "cache-control": "no-store" } },
+    );
+  }),
 );
 
 export const assetRouteLayer = HttpRouter.add(
