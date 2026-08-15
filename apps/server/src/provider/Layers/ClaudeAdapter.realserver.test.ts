@@ -20,13 +20,14 @@
  * PATH (or via CLAUDE_CONFIG_DIR), the suite skips with a clear reason.
  */
 import * as NodeAssert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { afterAll, beforeAll, describe, it } from "vite-plus/test";
+import { it } from "@effect/vitest";
+import { afterAll, beforeAll, describe } from "vite-plus/test";
 import * as Clock from "effect/Clock";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -64,7 +65,7 @@ beforeAll(() => {
     unavailableReason = "CLAUDE_REAL_SERVER is not 1 (real-account tests are opt-in)";
     return;
   }
-  const status = spawnSync("claude", ["auth", "status"], {
+  const status = NodeChildProcess.spawnSync("claude", ["auth", "status"], {
     encoding: "utf8",
     timeout: 60_000,
   });
@@ -112,25 +113,23 @@ const baseLayer = (cwd: string) =>
 const withAdapter = <A, E>(
   cwd: string,
   use: (adapter: ClaudeAdapterShape, collected: Array<ProviderRuntimeEvent>) => Effect.Effect<A, E>,
-): Promise<A> =>
-  Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const adapter = yield* makeClaudeAdapter(decodeClaudeSettings({}), {
-          instanceId: INSTANCE_ID,
-        });
-        const collected: Array<ProviderRuntimeEvent> = [];
-        const pump = yield* adapter.streamEvents.pipe(
-          Stream.runForEach((event) => Effect.sync(() => collected.push(event))),
-          Effect.forkScoped,
-        );
-        const result = yield* use(adapter, collected);
-        yield* adapter.stopAll().pipe(Effect.ignore);
-        yield* Fiber.interrupt(pump).pipe(Effect.ignore);
-        return result;
-      }),
-    ).pipe(Effect.provide(baseLayer(cwd))),
-  );
+) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const adapter = yield* makeClaudeAdapter(decodeClaudeSettings({}), {
+        instanceId: INSTANCE_ID,
+      });
+      const collected: Array<ProviderRuntimeEvent> = [];
+      const pump = yield* adapter.streamEvents.pipe(
+        Stream.runForEach((event) => Effect.sync(() => collected.push(event))),
+        Effect.forkScoped,
+      );
+      const result = yield* use(adapter, collected);
+      yield* adapter.stopAll().pipe(Effect.ignore);
+      yield* Fiber.interrupt(pump).pipe(Effect.ignore);
+      return result;
+    }),
+  ).pipe(Effect.provide(baseLayer(cwd)));
 
 const waitForEvent = (
   collected: ReadonlyArray<ProviderRuntimeEvent>,
@@ -166,14 +165,17 @@ function assistantText(collected: ReadonlyArray<ProviderRuntimeEvent>): string {
 
 const modelSelection = () => createModelSelection(INSTANCE_ID, TEST_MODEL, []);
 
+// `it.live` (not `it.effect`): these tests await a real external runtime, so
+// they need the live wall clock — the TestClock would never advance the
+// polling sleeps in `waitForEvent`.
 describe("Claude provider contract (real runtime)", () => {
-  it(
+  it.live(
     "creates a session, streams a real model response, and completes the turn",
-    async (ctx) => {
+    (ctx) => {
       if (unavailableReason || !workspaceDir) return ctx.skip();
       const cwd = workspaceDir;
       const threadId = ThreadId.make("claude-contract-stream");
-      await withAdapter(cwd, (adapter, collected) =>
+      return withAdapter(cwd, (adapter, collected) =>
         Effect.gen(function* () {
           const session = yield* adapter.startSession({
             threadId,
@@ -227,13 +229,13 @@ describe("Claude provider contract (real runtime)", () => {
     TEST_TIMEOUT_MS,
   );
 
-  it(
+  it.live(
     "interrupts an active turn and leaves the session usable",
-    async (ctx) => {
+    (ctx) => {
       if (unavailableReason || !workspaceDir) return ctx.skip();
       const cwd = workspaceDir;
       const threadId = ThreadId.make("claude-contract-interrupt");
-      await withAdapter(cwd, (adapter, collected) =>
+      return withAdapter(cwd, (adapter, collected) =>
         Effect.gen(function* () {
           yield* adapter.startSession({
             threadId,
@@ -292,77 +294,79 @@ describe("Claude provider contract (real runtime)", () => {
     TEST_TIMEOUT_MS,
   );
 
-  it(
+  it.live(
     "resumes the same conversation from the durable cursor",
-    async (ctx) => {
+    (ctx) => {
       if (unavailableReason || !workspaceDir) return ctx.skip();
       const cwd = workspaceDir;
       const threadId = ThreadId.make("claude-contract-resume");
 
-      const firstRun = await withAdapter(cwd, (adapter, collected) =>
-        Effect.gen(function* () {
-          yield* adapter.startSession({
-            threadId,
-            provider: PROVIDER,
-            modelSelection: modelSelection(),
-            runtimeMode: "full-access",
-            cwd,
-          });
-          const turn = yield* adapter.sendTurn({
-            threadId,
-            input: "Remember the code word aubergine. Reply with exactly the word stored.",
-            attachments: [],
-            modelSelection: modelSelection(),
-          });
-          yield* waitForEvent(
-            collected,
-            (event) =>
-              event.type === "turn.completed" &&
-              String(event.turnId) === String(turn.turnId) &&
-              (event.payload as { state?: string }).state === "completed",
-            180_000,
-            "turn.completed",
-          );
-          const sessions = yield* adapter.listSessions();
-          return sessions.find((candidate) => String(candidate.threadId) === String(threadId))
-            ?.resumeCursor;
-        }),
-      );
-      NodeAssert.ok(firstRun, "expected a resume cursor from the first adapter");
+      return Effect.gen(function* () {
+        const firstRun = yield* withAdapter(cwd, (adapter, collected) =>
+          Effect.gen(function* () {
+            yield* adapter.startSession({
+              threadId,
+              provider: PROVIDER,
+              modelSelection: modelSelection(),
+              runtimeMode: "full-access",
+              cwd,
+            });
+            const turn = yield* adapter.sendTurn({
+              threadId,
+              input: "Remember the code word aubergine. Reply with exactly the word stored.",
+              attachments: [],
+              modelSelection: modelSelection(),
+            });
+            yield* waitForEvent(
+              collected,
+              (event) =>
+                event.type === "turn.completed" &&
+                String(event.turnId) === String(turn.turnId) &&
+                (event.payload as { state?: string }).state === "completed",
+              180_000,
+              "turn.completed",
+            );
+            const sessions = yield* adapter.listSessions();
+            return sessions.find((candidate) => String(candidate.threadId) === String(threadId))
+              ?.resumeCursor;
+          }),
+        );
+        NodeAssert.ok(firstRun, "expected a resume cursor from the first adapter");
 
-      // A fresh adapter (fresh process semantics — exactly what a container
-      // restart produces) re-adopts the conversation from the cursor.
-      await withAdapter(cwd, (adapter, collected) =>
-        Effect.gen(function* () {
-          yield* adapter.startSession({
-            threadId,
-            provider: PROVIDER,
-            modelSelection: modelSelection(),
-            runtimeMode: "full-access",
-            cwd,
-            resumeCursor: firstRun,
-          });
-          const turn = yield* adapter.sendTurn({
-            threadId,
-            input: "Reply with exactly the code word you were asked to remember.",
-            attachments: [],
-            modelSelection: modelSelection(),
-          });
-          yield* waitForEvent(
-            collected,
-            (event) =>
-              event.type === "turn.completed" &&
-              String(event.turnId) === String(turn.turnId) &&
-              (event.payload as { state?: string }).state === "completed",
-            180_000,
-            "resumed turn.completed",
-          );
-          NodeAssert.ok(
-            assistantText(collected).toLowerCase().includes("aubergine"),
-            "the resumed session must remember the earlier conversation",
-          );
-        }),
-      );
+        // A fresh adapter (fresh process semantics — exactly what a container
+        // restart produces) re-adopts the conversation from the cursor.
+        yield* withAdapter(cwd, (adapter, collected) =>
+          Effect.gen(function* () {
+            yield* adapter.startSession({
+              threadId,
+              provider: PROVIDER,
+              modelSelection: modelSelection(),
+              runtimeMode: "full-access",
+              cwd,
+              resumeCursor: firstRun,
+            });
+            const turn = yield* adapter.sendTurn({
+              threadId,
+              input: "Reply with exactly the code word you were asked to remember.",
+              attachments: [],
+              modelSelection: modelSelection(),
+            });
+            yield* waitForEvent(
+              collected,
+              (event) =>
+                event.type === "turn.completed" &&
+                String(event.turnId) === String(turn.turnId) &&
+                (event.payload as { state?: string }).state === "completed",
+              180_000,
+              "resumed turn.completed",
+            );
+            NodeAssert.ok(
+              assistantText(collected).toLowerCase().includes("aubergine"),
+              "the resumed session must remember the earlier conversation",
+            );
+          }),
+        );
+      });
     },
     TEST_TIMEOUT_MS,
   );

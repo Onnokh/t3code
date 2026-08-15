@@ -1,6 +1,7 @@
 import * as NodeAssert from "node:assert/strict";
 
-import { describe, it } from "vite-plus/test";
+import { it } from "@effect/vitest";
+import { describe } from "vite-plus/test";
 import * as Path from "effect/Path";
 import * as Effect from "effect/Effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -113,27 +114,22 @@ describe("parseOpenCode2Resume", () => {
 });
 
 describe("isWithinOpenCode2WorkspaceRoot", () => {
-  it("accepts the root itself and nested paths, rejects escapes", () =>
-    Effect.runPromise(
-      Effect.gen(function* () {
-        const path = yield* Path.Path;
-        NodeAssert.equal(
-          isWithinOpenCode2WorkspaceRoot(path, "/workspaces/code", "/workspaces/code"),
-          true,
-        );
-        NodeAssert.equal(
-          isWithinOpenCode2WorkspaceRoot(
-            path,
-            "/workspaces/code",
-            "/workspaces/code/repo/worktree",
-          ),
-          true,
-        );
-        NodeAssert.equal(
-          isWithinOpenCode2WorkspaceRoot(path, "/workspaces/code", "/workspaces/code/../secrets"),
-          false,
-        );
-        NodeAssert.equal(isWithinOpenCode2WorkspaceRoot(path, "/workspaces/code", "/etc"), false);
-      }).pipe(Effect.provide(NodeServices.layer)),
-    ));
+  it.effect("accepts the root itself and nested paths, rejects escapes", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      NodeAssert.equal(
+        isWithinOpenCode2WorkspaceRoot(path, "/workspaces/code", "/workspaces/code"),
+        true,
+      );
+      NodeAssert.equal(
+        isWithinOpenCode2WorkspaceRoot(path, "/workspaces/code", "/workspaces/code/repo/worktree"),
+        true,
+      );
+      NodeAssert.equal(
+        isWithinOpenCode2WorkspaceRoot(path, "/workspaces/code", "/workspaces/code/../secrets"),
+        false,
+      );
+      NodeAssert.equal(isWithinOpenCode2WorkspaceRoot(path, "/workspaces/code", "/etc"), false);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
 });

@@ -19,9 +19,9 @@
  * Exit code 0 when every check passes, 1 otherwise. The script prints no
  * credential material — only file names and permission bits.
  */
-import { execFileSync } from "node:child_process";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 
 const requireAuth = process.argv.includes("--require-auth");
 let failures = 0;
@@ -41,7 +41,7 @@ if (!expectedVersion) {
   fail("claude-pin", "DEVSKI_CLAUDE_CODE_VERSION is not set in this container");
 } else {
   try {
-    const reported = execFileSync("claude", ["--version"], {
+    const reported = NodeChildProcess.execFileSync("claude", ["--version"], {
       encoding: "utf8",
       timeout: 30_000,
     }).trim();
@@ -72,11 +72,11 @@ if (!configDir) {
 } else {
   pass("claude-state-dir", `CLAUDE_CONFIG_DIR=${configDir}`);
   try {
-    const stat = fs.statSync(configDir);
+    const stat = NodeFS.statSync(configDir);
     if (!stat.isDirectory()) throw new Error("not a directory");
-    const probe = path.join(configDir, `.devski-smoke-${process.pid}`);
-    fs.writeFileSync(probe, "ok\n");
-    fs.rmSync(probe);
+    const probe = NodePath.join(configDir, `.devski-smoke-${process.pid}`);
+    NodeFS.writeFileSync(probe, "ok\n");
+    NodeFS.rmSync(probe);
     pass(
       "claude-state-writable",
       `${configDir} is writable by uid=${process.getuid?.() ?? "?"} (mode ${(stat.mode & 0o777).toString(8)})`,
@@ -88,7 +88,7 @@ if (!configDir) {
   // 3. Authentication state. `.credentials.json` holds the Max OAuth state on
   // Linux; `.claude.json` holds the runtime's onboarding/config state.
   const stateFiles = [".credentials.json", ".claude.json"].filter((name) =>
-    fs.existsSync(path.join(configDir, name)),
+    NodeFS.existsSync(NodePath.join(configDir, name)),
   );
   if (stateFiles.length > 0) {
     pass("claude-auth-state", `found ${stateFiles.join(", ")} in ${configDir}`);
