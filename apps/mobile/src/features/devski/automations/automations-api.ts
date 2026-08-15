@@ -54,6 +54,43 @@ export type AutomationsClient = {
     definition: JobDefinitionInput,
     confirmCommand?: string,
   ) => Promise<AutomationsResult<AutomationJob>>;
+  /**
+   * Lifecycle operations (PLO-419) at the observed Job Revision. A stale
+   * revision fails with `revision_conflict` and the current Job; the
+   * screen reloads authoritatively instead of overwriting.
+   */
+  readonly enableJob: (
+    jobId: string,
+    revision: number,
+  ) => Promise<AutomationsResult<AutomationJob>>;
+  readonly disableJob: (
+    jobId: string,
+    revision: number,
+  ) => Promise<AutomationsResult<AutomationJob>>;
+  readonly archiveJob: (
+    jobId: string,
+    revision: number,
+  ) => Promise<AutomationsResult<AutomationJob>>;
+  readonly restoreJob: (
+    jobId: string,
+    revision: number,
+  ) => Promise<AutomationsResult<AutomationJob>>;
+  /** Duplication answers a new disabled Job with no Runs or Workspace. */
+  readonly duplicateJob: (
+    jobId: string,
+    name: string,
+    idempotencyKey: string,
+  ) => Promise<AutomationsResult<AutomationJob>>;
+  /**
+   * Permanent deletion. `confirmName` is the authority-bearing typed-name
+   * confirmation: the server compares it against the exact current Job
+   * name and also requires the latest revision and no active Run.
+   */
+  readonly deleteJob: (
+    jobId: string,
+    revision: number,
+    confirmName: string,
+  ) => Promise<AutomationsResult<AutomationJob>>;
   readonly listRuns: (jobId: string, limit?: number) => Promise<AutomationsResult<AutomationRun[]>>;
   readonly runNow: (
     jobId: string,
@@ -133,6 +170,36 @@ export function createAutomationsClient(baseUrl: string, bearerToken: string): A
           definition,
           ...(confirmCommand !== undefined ? { confirmCommand } : {}),
         }),
+      }),
+    enableJob: (jobId, revision) =>
+      call(`/jobs/${encodeId(jobId)}/enable`, readJobMutation, {
+        method: "POST",
+        body: JSON.stringify({ revision }),
+      }),
+    disableJob: (jobId, revision) =>
+      call(`/jobs/${encodeId(jobId)}/disable`, readJobMutation, {
+        method: "POST",
+        body: JSON.stringify({ revision }),
+      }),
+    archiveJob: (jobId, revision) =>
+      call(`/jobs/${encodeId(jobId)}/archive`, readJobMutation, {
+        method: "POST",
+        body: JSON.stringify({ revision }),
+      }),
+    restoreJob: (jobId, revision) =>
+      call(`/jobs/${encodeId(jobId)}/restore`, readJobMutation, {
+        method: "POST",
+        body: JSON.stringify({ revision }),
+      }),
+    duplicateJob: (jobId, name, idempotencyKey) =>
+      call(`/jobs/${encodeId(jobId)}/duplicate`, readJobMutation, {
+        method: "POST",
+        body: JSON.stringify({ name, idempotencyKey }),
+      }),
+    deleteJob: (jobId, revision, confirmName) =>
+      call(`/jobs/${encodeId(jobId)}`, readJobMutation, {
+        method: "DELETE",
+        body: JSON.stringify({ revision, confirmName }),
       }),
     listRuns: (jobId, limit = 100) =>
       call(`/jobs/${encodeId(jobId)}/runs?limit=${limit}`, readRuns),

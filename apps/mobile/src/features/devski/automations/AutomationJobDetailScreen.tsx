@@ -12,6 +12,13 @@ import { ErrorBanner } from "../../../components/ErrorBanner";
 import { uuidv4 } from "../../../lib/uuid";
 import { useAutomationsClient } from "./automations-api";
 import {
+  availableLifecycleActions,
+  deleteBlockedByActiveRun,
+  describeDeletionScope,
+  suggestDuplicateName,
+  type LifecycleAction,
+} from "./automations-lifecycle";
+import {
   describeRunSummary,
   describeTrigger,
   describeWork,
@@ -19,6 +26,7 @@ import {
   summarizeError,
   type AutomationJob,
   type AutomationRun,
+  type AutomationsResult,
   type AutomationsStackParamList,
 } from "./automations-state";
 import { CodeBlock, FieldRow, ListRow, PlainButton, SectionTitle } from "./AutomationsUi";
@@ -45,7 +53,11 @@ function runLines(run: AutomationRun): string[] {
 
 /**
  * Plain Job detail: the accepted Job fields and current revision, Run Now
- * through the canonical Trigger path, and newest-first Run history.
+ * through the canonical Trigger path, newest-first Run history, and the
+ * accepted lifecycle controls (PLO-419): enable, disable, archive,
+ * restore, duplicate, and permanent deletion with the typed-name
+ * confirmation. Every operation refreshes authoritative server state; no
+ * offline mutation is queued.
  */
 export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) {
   const { jobId } = route.params;
@@ -55,6 +67,7 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
   const [refreshing, setRefreshing] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
+  const [mutating, setMutating] = useState<LifecycleAction | null>(null);
   const runNowKey = useRef<string | null>(null);
 
   const load = useCallback(async () => {
@@ -151,6 +164,136 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
     [requestRunNow],
   );
 
+  /**
+   * Runs one lifecycle mutation, then refreshes authoritative server
+   * state. There is no offline queue: a failure surfaces immediately and
+   * the screen reloads what the server holds.
+   */
+  const applyLifecycle = useCallback(
+    async (
+      action: LifecycleAction,
+      mutate: () => Promise<AutomationsResult<AutomationJob>>,
+    ): Promise<AutomationJob | null> => {
+      setMutating(action);
+      setBanner(null);
+      const result = await mutate();
+      // A deleted Job no longer loads; every other outcome refetches.
+      if (action !== "delete" || result.kind !== "ok") await load();
+      setMutating(null);
+      if (result.kind === "ok") return result.value;
+      if (result.kind === "pairing-required") {
+        setBanner("This Device Session expired or was revoked. Pair this device again.");
+        return null;
+      }
+      if (result.error.code === "revision_conflict") {
+        setBanner(
+          "This action used an outdated Job Revision. The current Job was reloaded — review it and try again.",
+        );
+        return null;
+      }
+      if (result.error.code === "validation_failed" && result.error.fieldErrors?.confirmName) {
+        setBanner("The typed name does not match the current Job name. Nothing was deleted.");
+        return null;
+      }
+      setBanner(result.error.message);
+      return null;
+    },
+    [load],
+  );
+
+  const onToggleTriggers = useCallback(
+    (job: AutomationJob) => {
+      if (!client) return;
+      // Enable/disable needs no confirmation (remote-action safety policy).
+      void applyLifecycle(job.enabled ? "disable" : "enable", () =>
+        job.enabled
+          ? client.disableJob(job.id, job.revision)
+          : client.enableJob(job.id, job.revision),
+      );
+    },
+    [applyLifecycle, client],
+  );
+
+  const onArchive = useCallback(
+    (job: AutomationJob) => {
+      if (!client) return;
+      // Archiving is the recoverable path; an active Run continues.
+      void applyLifecycle("archive", () => client.archiveJob(job.id, job.revision));
+    },
+    [applyLifecycle, client],
+  );
+
+  const onRestore = useCallback(
+    (job: AutomationJob) => {
+      if (!client) return;
+      void applyLifecycle("restore", () => client.restoreJob(job.id, job.revision));
+    },
+    [applyLifecycle, client],
+  );
+
+  const onDuplicate = useCallback(
+    (job: AutomationJob) => {
+      if (!client) return;
+      Alert.prompt(
+        "Duplicate Job",
+        "The copy starts disabled and owns no Runs, logs, Artifacts, or Workspace. Name the new Job:",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Duplicate",
+            onPress: (name?: string) => {
+              const trimmed = name?.trim();
+              if (!trimmed) {
+                setBanner("A name for the duplicated Job is required.");
+                return;
+              }
+              void applyLifecycle("duplicate", () =>
+                client.duplicateJob(job.id, trimmed, uuidv4()),
+              ).then((copy) => {
+                if (copy) {
+                  navigation.navigate("AutomationJob", { jobId: copy.id, name: copy.name });
+                }
+              });
+            },
+          },
+        ],
+        "plain-text",
+        suggestDuplicateName(job.name),
+      );
+    },
+    [applyLifecycle, client, navigation],
+  );
+
+  const onDelete = useCallback(
+    (job: AutomationJob, runCount: number) => {
+      if (!client) return;
+      // Destructive confirmation (remote-action safety policy): summarize
+      // everything that goes away and require typing the exact Job name.
+      // The server verifies the typed name, the latest revision, and that
+      // no Run is active before removing anything.
+      Alert.prompt(
+        "Delete Job permanently?",
+        describeDeletionScope(job, runCount),
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete permanently",
+            style: "destructive",
+            onPress: (typed?: string) => {
+              void applyLifecycle("delete", () =>
+                client.deleteJob(job.id, job.revision, typed ?? ""),
+              ).then((deleted) => {
+                if (deleted) navigation.goBack();
+              });
+            },
+          },
+        ],
+        "plain-text",
+      );
+    },
+    [applyLifecycle, client, navigation],
+  );
+
   if (!client) {
     return (
       <View className="flex-1 bg-screen px-5 py-5">
@@ -230,11 +373,71 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
             <PlainButton
               label={triggering ? "Requesting Run…" : "Run Now"}
               disabled={
-                triggering || Boolean(state.job.activeRunId) || Boolean(state.job.archivedAt)
+                triggering ||
+                mutating !== null ||
+                Boolean(state.job.activeRunId) ||
+                Boolean(state.job.archivedAt)
               }
               onPress={() => onRunNow(state.job)}
             />
           </View>
+
+          <SectionTitle>Lifecycle</SectionTitle>
+          {(() => {
+            const actions = availableLifecycleActions(state.job);
+            const busy = mutating !== null || triggering;
+            const deleteBlocked = deleteBlockedByActiveRun(state.job);
+            const job = state.job;
+            const runCount = state.runs.length;
+            return (
+              <View className="gap-2">
+                {actions.includes("enable") ? (
+                  <PlainButton
+                    label={mutating === "enable" ? "Enabling…" : "Enable automatic Triggers"}
+                    disabled={busy}
+                    onPress={() => onToggleTriggers(job)}
+                  />
+                ) : null}
+                {actions.includes("disable") ? (
+                  <PlainButton
+                    label={mutating === "disable" ? "Disabling…" : "Disable automatic Triggers"}
+                    disabled={busy}
+                    onPress={() => onToggleTriggers(job)}
+                  />
+                ) : null}
+                {actions.includes("archive") ? (
+                  <PlainButton
+                    label={mutating === "archive" ? "Archiving…" : "Archive Job"}
+                    disabled={busy}
+                    onPress={() => onArchive(job)}
+                  />
+                ) : null}
+                {actions.includes("restore") ? (
+                  <PlainButton
+                    label={mutating === "restore" ? "Restoring…" : "Restore Job"}
+                    disabled={busy}
+                    onPress={() => onRestore(job)}
+                  />
+                ) : null}
+                <PlainButton
+                  label={mutating === "duplicate" ? "Duplicating…" : "Duplicate Job"}
+                  disabled={busy}
+                  onPress={() => onDuplicate(job)}
+                />
+                <PlainButton
+                  label={mutating === "delete" ? "Deleting…" : "Delete Job permanently"}
+                  destructive
+                  disabled={busy || deleteBlocked}
+                  onPress={() => onDelete(job, runCount)}
+                />
+                {deleteBlocked ? (
+                  <Text className="text-xs text-foreground-muted">
+                    Permanent deletion waits until no Run is active. Stop the active Run first.
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })()}
 
           <SectionTitle>Run history</SectionTitle>
           {state.runs.length === 0 ? (

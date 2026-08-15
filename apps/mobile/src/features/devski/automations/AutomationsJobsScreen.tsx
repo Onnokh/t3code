@@ -31,7 +31,7 @@ function jobLines(job: AutomationJob): string[] {
 /**
  * Plain Automations home: every active and archived Job with its next,
  * active, and latest Run state, plus entry into the Job editor for
- * creation. Lifecycle controls beyond Stop are separate tickets (PLO-419).
+ * creation. Lifecycle controls (PLO-419) live on the Job detail screen.
  */
 export function AutomationsJobsScreen() {
   const navigation = useNavigation<NavigationProp<AutomationsStackParamList>>();
