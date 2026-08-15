@@ -1612,12 +1612,17 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const sessionBody = yield* responseJsonEffect<{
         readonly authenticated: boolean;
         readonly sessionMethod?: string;
+        readonly sessionId?: string;
         readonly scopes?: ReadonlyArray<string>;
       }>(sessionResponse);
 
       assert.equal(sessionResponse.status, 200);
       assert.equal(sessionBody.authenticated, true);
       assert.equal(sessionBody.sessionMethod, "bearer-access-token");
+      // Companion services (the Devski Gateway) bind notification
+      // registrations to this stable session identity.
+      assert.equal(typeof sessionBody.sessionId, "string");
+      assert.ok((sessionBody.sessionId ?? "").length > 0);
       assert.deepEqual(sessionBody.scopes, [
         "orchestration:read",
         "orchestration:operate",

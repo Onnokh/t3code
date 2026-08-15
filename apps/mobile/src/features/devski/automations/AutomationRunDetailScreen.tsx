@@ -5,6 +5,7 @@ import { useFocusEffect, type StaticScreenProps } from "@react-navigation/native
 import { AppText as Text } from "../../../components/AppText";
 import { ErrorBanner } from "../../../components/ErrorBanner";
 import { uuidv4 } from "../../../lib/uuid";
+import { useAutomationNotificationOffer } from "../notifications/automationNotifications";
 import { useAutomationsClient } from "./automations-api";
 import {
   describeRunState,
@@ -130,6 +131,15 @@ export function AutomationRunDetailScreen({ route }: StaticScreenProps<Params>) 
       if (result.kind === "ok") setArtifacts(result.value);
     });
   }, [terminal, client, runId, followLog]);
+
+  // Contextual notification onboarding (PLO-420): the first observed
+  // successful Run is the moment Automation Notifications become worth
+  // offering. The offer is one-shot and best-effort.
+  const offerNotifications = useAutomationNotificationOffer();
+  const succeeded = run?.state === "succeeded";
+  useEffect(() => {
+    if (succeeded) offerNotifications("first_successful_run_now");
+  }, [succeeded, offerNotifications]);
 
   const requestStop = useCallback(async () => {
     if (!client) return;

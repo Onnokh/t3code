@@ -340,5 +340,12 @@ export const AuthSessionState = Schema.Struct({
   scopes: Schema.optionalKey(AuthEnvironmentScopes),
   sessionMethod: Schema.optionalKey(ServerAuthSessionMethod),
   expiresAt: Schema.optionalKey(Schema.DateTimeUtc),
+  /**
+   * Stable identity of the authenticated session. Companion services (the
+   * Devski Gateway) bind per-device state — such as notification and Live
+   * Activity registrations — to this identity, so revoking one Device
+   * Session severs exactly that device's registrations.
+   */
+  sessionId: Schema.optionalKey(AuthSessionId),
 });
 export type AuthSessionState = typeof AuthSessionState.Type;

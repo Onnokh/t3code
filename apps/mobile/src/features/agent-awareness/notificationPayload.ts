@@ -69,11 +69,37 @@ function normalizeThreadDeepLink(value: string): string | null {
   }
 }
 
+const AUTOMATION_RUN_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
+
+/**
+ * Deliberate allowlist entry for Automation Notifications (PLO-420): the
+ * only accepted Automations deep link is the authoritative Run detail
+ * path with one opaque Run ID. Opening it still requires a current Device
+ * Session — an expired session lands on pairing instead of the Run.
+ */
+function normalizeAutomationRunDeepLink(value: string): string | null {
+  if (
+    value.trim() !== value ||
+    value.startsWith("//") ||
+    value.includes("?") ||
+    value.includes("#")
+  ) {
+    return null;
+  }
+  const parts = value.split("/");
+  if (parts.length !== 4 || parts[0] !== "" || parts[1] !== "automations" || parts[2] !== "runs") {
+    return null;
+  }
+  const runId = parts[3] ?? "";
+  return AUTOMATION_RUN_ID_PATTERN.test(runId) ? `/automations/runs/${runId}` : null;
+}
+
 export function extractAgentNotificationDeepLink(response: unknown): string | null {
   const data = dataFromNotificationResponse(response);
   const deepLink = data?.deepLink;
   if (typeof deepLink === "string") {
-    const normalizedDeepLink = normalizeThreadDeepLink(deepLink);
+    const normalizedDeepLink =
+      normalizeThreadDeepLink(deepLink) ?? normalizeAutomationRunDeepLink(deepLink);
     if (normalizedDeepLink) {
       return normalizedDeepLink;
     }

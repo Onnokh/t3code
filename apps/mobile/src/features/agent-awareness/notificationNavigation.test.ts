@@ -137,6 +137,38 @@ describe("extractAgentNotificationDeepLink", () => {
     ).toBe("/threads/env/thread");
   });
 
+  it("accepts the Automation Run detail deep link (PLO-420)", () => {
+    expect(
+      extractAgentNotificationDeepLink(
+        responseWithData({ deepLink: "/automations/runs/9f2c1a34-1b2c-4d5e-8f90-a1b2c3d4e5f6" }),
+      ),
+    ).toBe("/automations/runs/9f2c1a34-1b2c-4d5e-8f90-a1b2c3d4e5f6");
+  });
+
+  it("rejects Automation deep links outside the Run detail allowlist", () => {
+    expect(
+      extractAgentNotificationDeepLink(responseWithData({ deepLink: "/automations/runs" })),
+    ).toBeNull();
+    expect(
+      extractAgentNotificationDeepLink(responseWithData({ deepLink: "/automations/jobs/job-1" })),
+    ).toBeNull();
+    expect(
+      extractAgentNotificationDeepLink(
+        responseWithData({ deepLink: "/automations/runs/run-1/extra" }),
+      ),
+    ).toBeNull();
+    expect(
+      extractAgentNotificationDeepLink(
+        responseWithData({ deepLink: "/automations/runs/run-1?x=1" }),
+      ),
+    ).toBeNull();
+    expect(
+      extractAgentNotificationDeepLink(
+        responseWithData({ deepLink: "/automations/runs/run%2F../escape" }),
+      ),
+    ).toBeNull();
+  });
+
   it("ignores malformed or external links", () => {
     expect(
       extractAgentNotificationDeepLink(responseWithData({ deepLink: "https://example.com" })),

@@ -10,6 +10,10 @@ import {
 import { AppText as Text } from "../../../components/AppText";
 import { ErrorBanner } from "../../../components/ErrorBanner";
 import { uuidv4 } from "../../../lib/uuid";
+import {
+  useArmDevskiActivityForAutomationRun,
+  useAutomationNotificationOffer,
+} from "../notifications/automationNotifications";
 import { useAutomationsClient } from "./automations-api";
 import {
   availableLifecycleActions,
@@ -63,6 +67,8 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
   const { jobId } = route.params;
   const navigation = useNavigation<NavigationProp<AutomationsStackParamList>>();
   const client = useAutomationsClient();
+  const offerNotifications = useAutomationNotificationOffer();
+  const armDevskiActivity = useArmDevskiActivityForAutomationRun();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [refreshing, setRefreshing] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
@@ -116,6 +122,9 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
       setTriggering(false);
       if (result.kind === "ok") {
         runNowKey.current = null;
+        // Show this Run on the unified Devski Activity (best-effort;
+        // ActivityKit being unavailable never affects the Run).
+        armDevskiActivity({ jobName: job.name, runId: result.value.run.id });
         void load();
         openRun(result.value.run.id);
         return;
@@ -138,7 +147,7 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
       }
       setBanner(result.error.message);
     },
-    [client, load, openRun],
+    [armDevskiActivity, client, load, openRun],
   );
 
   const onRunNow = useCallback(
@@ -209,9 +218,16 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
         job.enabled
           ? client.disableJob(job.id, job.revision)
           : client.enableJob(job.id, job.revision),
-      );
+      ).then((updated) => {
+        // Contextual notification onboarding (PLO-420): enabling a
+        // scheduled Job is the other moment Automation Notifications
+        // become worth offering. One-shot and best-effort.
+        if (updated && !job.enabled && updated.enabled) {
+          offerNotifications("first_scheduled_job_enabled");
+        }
+      });
     },
-    [applyLifecycle, client],
+    [applyLifecycle, client, offerNotifications],
   );
 
   const onArchive = useCallback(

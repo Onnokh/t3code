@@ -76,6 +76,10 @@ const AutomationsStack = createNativeStackNavigator({
     AutomationRun: createNativeStackScreen({
       screen: AutomationRunDetailScreen,
       options: { title: "Run" },
+      // The Automation Notification deep link (PLO-420). The path carries
+      // one opaque Run ID; opening it requires a current Device Session
+      // because an unauthorized shell renders pairing instead of tabs.
+      linking: "automations/runs/:runId",
     }),
   },
 });

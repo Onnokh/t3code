@@ -25,7 +25,13 @@ export type AgentActivityPhase =
   | "waiting_for_input"
   | "completed"
   | "failed"
-  | "stale";
+  | "stale"
+  // Automation Run terminal phases (PLO-420). Code work keeps its
+  // existing phases; Automation rows arrive from the Devski Gateway's
+  // notification publisher with the Harness Run vocabulary.
+  | "succeeded"
+  | "timed_out"
+  | "cancelled";
 
 export interface AgentActivityRowProps {
   readonly environmentId: string;
@@ -37,6 +43,8 @@ export interface AgentActivityRowProps {
   readonly status: string;
   readonly updatedAt: string;
   readonly deepLink: string;
+  /** Distinguishes Code agent work from Automation Runs in one aggregate. */
+  readonly source?: "code" | "automation";
 }
 
 export interface AgentActivityProps {
@@ -82,9 +90,13 @@ export function AgentActivity(
       case "waiting_for_input":
         return isLightScheme ? "#4f46e5" : "#a5b4fc"; // indigo-600 / indigo-300
       case "failed":
+      case "timed_out":
         return isLightScheme ? "#dc2626" : "#fca5a5"; // red-600 / red-300
       case "completed":
+      case "succeeded":
         return isLightScheme ? "#059669" : "#6ee7b7"; // emerald-600 / emerald-300
+      case "cancelled":
+        return secondaryForeground;
       case "starting":
       case "running":
       default:
@@ -96,7 +108,7 @@ export function AgentActivity(
   // presentation, then failures, then in-flight work, then finished/stale.
   const phasePriority = (phase: AgentActivityPhase): number => {
     if (phase === "waiting_for_approval" || phase === "waiting_for_input") return 0;
-    if (phase === "failed") return 1;
+    if (phase === "failed" || phase === "timed_out") return 1;
     if (phase === "running" || phase === "starting") return 2;
     return 3;
   };
@@ -113,7 +125,9 @@ export function AgentActivity(
     (row) => row.phase === "waiting_for_approval" || row.phase === "waiting_for_input",
   );
   const attentionRow = attentionRows[0];
-  const failedRow = props.activities.find((row) => row.phase === "failed");
+  const failedRow = props.activities.find(
+    (row) => row.phase === "failed" || row.phase === "timed_out",
+  );
   const heroRow = attentionRow ?? failedRow ?? row0;
   const tint = phaseTint(heroRow?.phase);
   // Headline count leans on the accent when a human is actually blocked.
@@ -131,13 +145,29 @@ export function AgentActivity(
   // minimal glyph — must agree, and a failure anywhere should dominate a
   // newer success.
   const allDone = props.activeCount === 0;
+  // An aggregate of Automation Runs only keeps the Run vocabulary; a mixed
+  // or Code-only aggregate keeps the existing agent wording.
+  const allAutomation =
+    props.activities.length > 0 && props.activities.every((row) => row.source === "automation");
   const doneLabel = failedRow ? "Failed" : "Done";
-  const outcomeLabel = failedRow ? "Agent work failed" : "Agent work completed";
+  const outcomeLabel = failedRow
+    ? allAutomation
+      ? "Automation Run failed"
+      : "Agent work failed"
+    : allAutomation
+      ? "Automation Runs completed"
+      : "Agent work completed";
 
   // Header copy: "5 active agents" + (", 1 needs attention"). The banner renders
   // the two parts in-line so the attention half can carry the accent color;
   // `summary` is the short form for tight spots (expanded center, watch card).
-  const agentWord = props.activeCount === 1 ? "agent" : "agents";
+  const agentWord = allAutomation
+    ? props.activeCount === 1
+      ? "Run"
+      : "Runs"
+    : props.activeCount === 1
+      ? "agent"
+      : "agents";
   const agentsLabel = allDone ? outcomeLabel : `${props.activeCount} active ${agentWord}`;
   const attentionSuffix =
     attentionRows.length > 0
@@ -165,8 +195,13 @@ export function AgentActivity(
         return "questionmark.circle.fill";
       case "failed":
         return "xmark.octagon.fill";
+      case "timed_out":
+        return "clock.badge.exclamationmark.fill";
       case "completed":
+      case "succeeded":
         return "checkmark.circle.fill";
+      case "cancelled":
+        return "xmark.circle";
       case "starting":
         return "circle.dotted";
       case "stale":
