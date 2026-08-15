@@ -93,13 +93,16 @@ Devski shell adds no alternate provider, workspace, or thread implementation.
 ## 6. Exercise all root tabs
 
 1. With the real thread open, switch to **SEO**.
-2. Confirm the page reports the same connected Code environment and says that the Devski Gateway
-   is unavailable in this local shell checkpoint.
+2. Confirm the page reports the same connected Code environment and shows honest Gateway health.
+   Paired directly with a plain T3 dev server, it must say that no Devski Gateway is answering at
+   this environment. Paired through a running Devski Gateway, it must show the per-service health
+   from `GET /api/devski/v1/capabilities` and the Device Session expiry instead.
 3. Switch to **Automations** and confirm the same state.
 4. Switch back to **Code**.
 
 Expected: the original thread is still selected because each native root tab retains its own stack
-and Code was never unmounted. SEO and Automations do not claim that their services are available.
+and Code was never unmounted. SEO and Automations never claim more availability than the Gateway
+reported.
 
 ## Record the result
 
