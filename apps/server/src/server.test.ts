@@ -3357,6 +3357,133 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("closes an established websocket promptly when its session is revoked", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const adminToken = yield* getAuthenticatedBearerSessionToken();
+      const deviceToken = yield* getAuthenticatedBearerSessionToken();
+
+      const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
+      const deviceSessionResponse = yield* fetchEffect(sessionUrl, {
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      const deviceSessionBody = yield* responseJsonEffect<{
+        readonly authenticated: boolean;
+        readonly sessionId?: string;
+      }>(deviceSessionResponse);
+      assert.equal(deviceSessionBody.authenticated, true);
+      assert.equal(typeof deviceSessionBody.sessionId, "string");
+
+      const wsTicketUrl = yield* getHttpServerUrl("/api/auth/websocket-ticket");
+      const wsTicketResponse = yield* fetchEffect(wsTicketUrl, {
+        method: "POST",
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      const wsTicketBody = yield* responseJsonEffect<{ readonly ticket: string }>(wsTicketResponse);
+      assert.equal(wsTicketResponse.status, 200);
+
+      const wsUrl = `${yield* getWsServerUrl("/ws", { authenticated: false })}?wsTicket=${encodeURIComponent(wsTicketBody.ticket)}`;
+      const socket = yield* Effect.acquireRelease(
+        Effect.callback<NodeSocket.NodeWS.WebSocket, Error>((resume) => {
+          const candidate = new NodeSocket.NodeWS.WebSocket(wsUrl);
+          candidate.on("open", () => resume(Effect.succeed(candidate)));
+          candidate.on("error", (error) => resume(Effect.fail(error)));
+        }),
+        (openSocket) => Effect.sync(() => openSocket.close()),
+      );
+      // Register the close listener before revoking so the transition is
+      // observed no matter how quickly the server tears the socket down.
+      const closed = new Promise<void>((resolve) => {
+        socket.on("close", () => resolve());
+      });
+
+      const revokeUrl = yield* getHttpServerUrl("/api/auth/clients/revoke");
+      const revokeResponse = yield* fetchEffect(revokeUrl, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${adminToken}`,
+          "content-type": "application/json",
+        },
+        body: jsonRequestBody({ sessionId: deviceSessionBody.sessionId }),
+      });
+      const revokeBody = yield* responseJsonEffect<{ readonly revoked: boolean }>(revokeResponse);
+      assert.equal(revokeResponse.status, 200);
+      assert.equal(revokeBody.revoked, true);
+
+      // Prompt closure: the revocation event, not the 30s recheck, must end
+      // the established connection.
+      yield* Effect.promise(() => closed).pipe(
+        Effect.timeoutOrElse({
+          duration: "10 seconds",
+          orElse: () =>
+            Effect.die(new Error("Expected the established websocket to close after revocation.")),
+        }),
+      );
+
+      // The revoked session is also rejected for subsequent HTTP and tickets.
+      const revokedSessionResponse = yield* fetchEffect(sessionUrl, {
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      const revokedSessionBody = yield* responseJsonEffect<{ readonly authenticated: boolean }>(
+        revokedSessionResponse,
+      );
+      assert.equal(revokedSessionBody.authenticated, false);
+      const revokedTicketResponse = yield* fetchEffect(wsTicketUrl, {
+        method: "POST",
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      assert.equal(revokedTicketResponse.status, 401);
+    }).pipe(Effect.scoped, Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("lets a standard-scope session sign itself out without access:write", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const { response: exchangeResponse, body: tokenBody } = yield* exchangeAccessToken(
+        defaultDesktopBootstrapToken,
+        { scope: "orchestration:read orchestration:operate" },
+      );
+      assert.equal(exchangeResponse.status, 200);
+      const deviceToken = tokenBody.access_token ?? "";
+      assert.isTrue(deviceToken.length > 0);
+
+      // The scoped revoke endpoint refuses this session (no access:write),
+      // so self sign-out must not depend on it.
+      const revokeUrl = yield* getHttpServerUrl("/api/auth/clients/revoke-others");
+      const forbiddenResponse = yield* fetchEffect(revokeUrl, {
+        method: "POST",
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      assert.equal(forbiddenResponse.status, 403);
+
+      const signOutUrl = yield* getHttpServerUrl("/api/auth/sign-out");
+      const signOutResponse = yield* fetchEffect(signOutUrl, {
+        method: "POST",
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      const signOutBody = yield* responseJsonEffect<{ readonly revoked: boolean }>(signOutResponse);
+      assert.equal(signOutResponse.status, 200);
+      assert.equal(signOutBody.revoked, true);
+
+      const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
+      const afterSignOutResponse = yield* fetchEffect(sessionUrl, {
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      const afterSignOutBody = yield* responseJsonEffect<{ readonly authenticated: boolean }>(
+        afterSignOutResponse,
+      );
+      assert.equal(afterSignOutBody.authenticated, false);
+
+      const repeatSignOutResponse = yield* fetchEffect(signOutUrl, {
+        method: "POST",
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      assert.equal(repeatSignOutResponse.status, 401);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("does not allow management-only access tokens to operate the environment", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
