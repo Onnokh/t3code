@@ -14,7 +14,9 @@ import { RootStack } from "../../Stack";
 import { useEnvironments } from "../../state/environments";
 import { ConnectionsNewRouteScreen } from "../connection/ConnectionsNewRouteScreen";
 import { useConnectionController } from "../connection/useConnectionController";
-import { AutomationsPlaceholderScreen } from "./AutomationsPlaceholderScreen";
+import { AutomationJobDetailScreen } from "./automations/AutomationJobDetailScreen";
+import { AutomationRunDetailScreen } from "./automations/AutomationRunDetailScreen";
+import { AutomationsJobsScreen } from "./automations/AutomationsJobsScreen";
 import { SeoPlaceholderScreen } from "./SeoPlaceholderScreen";
 
 const SeoStack = createNativeStackNavigator({
@@ -29,8 +31,16 @@ const SeoStack = createNativeStackNavigator({
 const AutomationsStack = createNativeStackNavigator({
   screens: {
     AutomationsHome: createNativeStackScreen({
-      screen: AutomationsPlaceholderScreen,
+      screen: AutomationsJobsScreen,
       options: { title: "Automations" },
+    }),
+    AutomationJob: createNativeStackScreen({
+      screen: AutomationJobDetailScreen,
+      options: { title: "Job" },
+    }),
+    AutomationRun: createNativeStackScreen({
+      screen: AutomationRunDetailScreen,
+      options: { title: "Run" },
     }),
   },
 });
