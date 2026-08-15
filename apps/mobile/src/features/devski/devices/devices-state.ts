@@ -129,7 +129,8 @@ export function describeDeviceLines(device: PairedDevice): string[] {
 
 /** The list orders the current device first, then most recently paired. */
 export function sortDevices(devices: readonly PairedDevice[]): PairedDevice[] {
-  return devices.toSorted((left, right) => {
+  // .sort() on a copy, not .toSorted(): Hermes doesn't ship the ES2023 method.
+  return [...devices].sort((left, right) => {
     if (left.current !== right.current) return left.current ? -1 : 1;
     return Date.parse(right.createdAt ?? "") - Date.parse(left.createdAt ?? "");
   });

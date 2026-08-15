@@ -64,7 +64,9 @@ export function SeoHistoryScreen() {
             </Text>
           ) : (
             <View className="rounded-2xl border border-border bg-card px-4 py-2">
-              {envelope.data.days.toReversed().map((day) => (
+              {/* .reverse() on a copy, not .toReversed(): Hermes doesn't ship
+                  the ES2023 method. */}
+              {[...envelope.data.days].reverse().map((day) => (
                 <FieldRow
                   key={day.date}
                   label={day.provisional ? `${day.date} (provisional)` : day.date}

@@ -55,8 +55,10 @@ function pickPrimaryRemote(
     }
   }
 
+  // .sort() on the spread copy, not .toSorted(): kept to the workspace
+  // convention because Hermes doesn't ship the ES2023 method.
   const [remoteName, remoteUrl] =
-    [...remotes.entries()].toSorted(([left], [right]) => left.localeCompare(right))[0] ?? [];
+    [...remotes.entries()].sort(([left], [right]) => left.localeCompare(right))[0] ?? [];
   return remoteName && remoteUrl ? { remoteName, remoteUrl } : null;
 }
 

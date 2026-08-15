@@ -114,6 +114,9 @@ export const createOxlintRuleHarness = (
         rules: { [ruleName]: "error" },
       }),
     );
+    // Path-scoped rules take fixture filenames with directories, so create
+    // the parent chain before writing.
+    yield* fs.makeDirectory(path.dirname(sourcePath), { recursive: true });
     yield* fs.writeFileString(sourcePath, source);
 
     // Run through the current Node binary: oxlint's bin is an extensionless
