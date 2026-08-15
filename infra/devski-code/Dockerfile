@@ -9,11 +9,22 @@
 # never published on a public domain. See infra/devski-code/README.md.
 FROM node:24.13.1-bookworm-slim
 
+# Pinned Claude Code runtime — the executable T3's Claude Agent SDK driver
+# spawns (default `binaryPath` is `claude`). This ARG is the single source of
+# truth for the deployed Claude runtime version; a test in
+# apps/server/src/provider/Drivers/ClaudeRuntimePin.test.ts keeps it at or
+# above the minimum the model catalog requires. Bump it here in a reviewed
+# change — the running container never self-updates (DISABLE_AUTOUPDATER).
+ARG CLAUDE_CODE_VERSION=2.1.231
+
 # git: checkpointing and project management. Build tools: node-pty.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates openssh-client python3 make g++ \
  && rm -rf /var/lib/apt/lists/* \
  && corepack enable
+
+RUN npm install -g --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+ && claude --version
 
 WORKDIR /srv/t3code
 
@@ -29,14 +40,32 @@ COPY apps/server ./apps/server
 # Install only the server package and its workspace dependencies.
 RUN pnpm install --frozen-lockfile --filter t3...
 
+# CLAUDE_CONFIG_DIR keeps the Claude Max login (`.credentials.json`),
+# `.claude.json`, and all Agent SDK state on the /data/claude volume so
+# authentication survives restarts and redeploys. T3's Claude driver passes
+# the process environment through to every spawned Claude runtime when the
+# instance has no custom `homePath` (see makeClaudeEnvironment in
+# apps/server/src/provider/Drivers/ClaudeHome.ts), so the default provider
+# instance persists there without any settings change.
+# DEVSKI_CLAUDE_CODE_VERSION lets claude-runtime-smoke.mjs verify the pin at
+# runtime; DISABLE_AUTOUPDATER stops the CLI from drifting off it.
 ENV TZ=Europe/Amsterdam \
     NODE_ENV=production \
-    T3CODE_HOME=/data/t3
+    T3CODE_HOME=/data/t3 \
+    CLAUDE_CONFIG_DIR=/data/claude \
+    DEVSKI_CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION} \
+    DISABLE_AUTOUPDATER=1
+
+# In-container deployment smoke: pinned Claude runtime + /data/claude
+# persistence and permissions. Run it with:
+#   docker exec <container> node infra/devski-code/claude-runtime-smoke.mjs
+COPY infra/devski-code/claude-runtime-smoke.mjs ./infra/devski-code/claude-runtime-smoke.mjs
 
 # /data/t3: T3 sessions, config, and project metadata (owner: T3 only).
 # /data/claude: Claude Max login and Agent SDK state (owner: T3 only).
 # /workspaces/code: the Code Workspace Root, shared with interactive
 # OpenCode 2 at the identical absolute path.
+RUN mkdir -p /data/t3 /data/claude /workspaces/code
 VOLUME /data/t3
 VOLUME /data/claude
 VOLUME /workspaces/code

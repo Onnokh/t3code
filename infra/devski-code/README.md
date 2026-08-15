@@ -22,6 +22,55 @@ in `Onnokh/digital-home`).
   T3 and OpenCode must observe the same file identity and repository state at
   the same absolute path.
 
+## Claude runtime and the one-time Max login
+
+The T3 image installs the pinned Claude Code runtime and keeps every piece of
+Claude state — the Max login (`.credentials.json`), `.claude.json`, sessions,
+and Agent SDK state — on the persistent `/data/claude` volume through
+`CLAUDE_CONFIG_DIR=/data/claude`. T3's Claude driver passes the container
+environment to every Claude runtime it spawns (see `makeClaudeEnvironment` in
+`apps/server/src/provider/Drivers/ClaudeHome.ts`), so one login survives
+application restarts and redeployments. Claude credentials belong to the
+server; they never reach the phone (see the authentication-boundary spec in
+`Onnokh/digital-home`).
+
+The version pin has one source of truth: `ARG CLAUDE_CODE_VERSION` in
+`Dockerfile`. `apps/server/src/provider/Drivers/ClaudeRuntimePin.test.ts`
+keeps the pin at or above the newest built-in model gate, and
+`DISABLE_AUTOUPDATER=1` stops the running container from drifting off it.
+Bump the version in the Dockerfile and redeploy; never update in place.
+
+### One-time login (owner, on the deployed box)
+
+1. Open a shell in the running T3 container (Coolify terminal, or
+   `docker exec -it <t3-container> bash`).
+2. Run `claude auth login`. The CLI prints a login URL: open it in the
+   browser on your own machine, sign in with the Max account, and paste the
+   authorization code back into the container terminal. The credential is
+   written to `/data/claude/.credentials.json`.
+3. Verify: `claude auth status` must report `"loggedIn": true` with the Max
+   subscription, and
+   `node infra/devski-code/claude-runtime-smoke.mjs --require-auth`
+   must pass all checks.
+4. Prove persistence once: restart the application (Coolify restart or
+   `docker restart <t3-container>`) and run the smoke from step 3 again.
+   T3's provider snapshot then reports Claude as authenticated in the Code
+   UI without any new login.
+
+### Runtime smoke
+
+`infra/devski-code/claude-runtime-smoke.mjs` ships inside the image and
+verifies the pinned runtime version, the `/data/claude` write permissions of
+the service user, and (with `--require-auth`) the presence of the persisted
+login state:
+
+```sh
+docker exec <t3-container> node infra/devski-code/claude-runtime-smoke.mjs
+```
+
+Run it after every deployment; run it with `--require-auth` after the
+one-time login and after restarts.
+
 ## Version pin
 
 The OpenCode 2 CLI/server and the `@opencode-ai/client` package must use the

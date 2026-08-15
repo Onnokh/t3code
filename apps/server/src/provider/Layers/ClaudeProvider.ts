@@ -51,7 +51,13 @@ const CLAUDE_PRESENTATION = {
   displayName: "Claude",
   showInteractionModeToggle: true,
 } as const;
-const MINIMUM_CLAUDE_OPUS_5_VERSION = "2.1.219";
+/**
+ * Newest version gate in the built-in Claude model catalog. Deployment pins
+ * (infra/devski-code/Dockerfile) must stay at or above it so the deployed
+ * runtime serves the complete catalog; ClaudeRuntimePin.test.ts enforces
+ * this.
+ */
+export const MINIMUM_CLAUDE_OPUS_5_VERSION = "2.1.219";
 const MINIMUM_CLAUDE_FABLE_5_VERSION = "2.1.169";
 const MINIMUM_CLAUDE_OPUS_4_8_VERSION = "2.1.154";
 const MINIMUM_CLAUDE_OPUS_4_7_VERSION = "2.1.111";
