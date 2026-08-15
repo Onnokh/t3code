@@ -18,13 +18,43 @@ import { AutomationJobDetailScreen } from "./automations/AutomationJobDetailScre
 import { AutomationJobEditorScreen } from "./automations/AutomationJobEditorScreen";
 import { AutomationRunDetailScreen } from "./automations/AutomationRunDetailScreen";
 import { AutomationsJobsScreen } from "./automations/AutomationsJobsScreen";
-import { SeoPlaceholderScreen } from "./SeoPlaceholderScreen";
+import { SeoHistoryScreen } from "./seo/SeoHistoryScreen";
+import { SeoHomeScreen } from "./seo/SeoHomeScreen";
+import { SeoLogScreen } from "./seo/SeoLogScreen";
+import { SeoOpportunitiesScreen } from "./seo/SeoOpportunitiesScreen";
+import { SeoPageDetailScreen } from "./seo/SeoPageDetailScreen";
+import { SeoQueriesScreen } from "./seo/SeoQueriesScreen";
+import { SeoRegistryScreen } from "./seo/SeoRegistryScreen";
 
 const SeoStack = createNativeStackNavigator({
   screens: {
     SeoHome: createNativeStackScreen({
-      screen: SeoPlaceholderScreen,
+      screen: SeoHomeScreen,
       options: { title: "SEO" },
+    }),
+    SeoOpportunities: createNativeStackScreen({
+      screen: SeoOpportunitiesScreen,
+      options: { title: "Opportunities" },
+    }),
+    SeoHistory: createNativeStackScreen({
+      screen: SeoHistoryScreen,
+      options: { title: "History" },
+    }),
+    SeoRegistry: createNativeStackScreen({
+      screen: SeoRegistryScreen,
+      options: { title: "Registry" },
+    }),
+    SeoLog: createNativeStackScreen({
+      screen: SeoLogScreen,
+      options: { title: "Log" },
+    }),
+    SeoQueries: createNativeStackScreen({
+      screen: SeoQueriesScreen,
+      options: { title: "Queries" },
+    }),
+    SeoPage: createNativeStackScreen({
+      screen: SeoPageDetailScreen,
+      options: { title: "Page" },
     }),
   },
 });

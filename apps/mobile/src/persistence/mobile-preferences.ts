@@ -34,6 +34,12 @@ export interface Preferences {
    * default flat list — see `resolveThreadListV2Enabled`.
    */
   readonly legacyThreadListEnabled?: boolean;
+  /**
+   * The SEO Area's persisted Site selection (a configured Site ID such as
+   * "missingmounts" or "sleevy"). Device-local per the SEO Read Contract:
+   * the selection applies to every SEO screen and survives app restart.
+   */
+  readonly seoSelectedSite?: string;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedErrorClass<MobilePreferencesLoadError>()(
@@ -86,6 +92,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     projectGroupingEnabled?: boolean;
     projectGroupingMode?: SidebarProjectGroupingMode;
     legacyThreadListEnabled?: boolean;
+    seoSelectedSite?: string;
   } = {};
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
@@ -124,6 +131,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (typeof parsed.legacyThreadListEnabled === "boolean") {
     preferences.legacyThreadListEnabled = parsed.legacyThreadListEnabled;
+  }
+  if (typeof parsed.seoSelectedSite === "string") {
+    preferences.seoSelectedSite = parsed.seoSelectedSite;
   }
   return preferences;
 }
