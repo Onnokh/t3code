@@ -57,6 +57,41 @@ export function PlainButton(props: {
   );
 }
 
+/**
+ * Plain selectable option row for the Job editor's pickers (trigger kind,
+ * model, timezone, Secret References). A checkmark marks selection; no
+ * custom visual treatment.
+ */
+export function ChoiceRow(props: {
+  readonly label: string;
+  readonly detail?: string;
+  readonly selected: boolean;
+  readonly onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: props.selected }}
+      onPress={props.onPress}
+      className={`flex-row items-center justify-between rounded-2xl border px-4 py-3 active:opacity-70 ${
+        props.selected ? "border-primary bg-card" : "border-border bg-card"
+      }`}
+    >
+      <View className="flex-1 pr-3">
+        <Text
+          className={`text-sm ${props.selected ? "font-t3-bold text-foreground" : "text-foreground"}`}
+        >
+          {props.label}
+        </Text>
+        {props.detail ? (
+          <Text className="mt-0.5 text-xs text-foreground-muted">{props.detail}</Text>
+        ) : null}
+      </View>
+      <Text className="text-sm text-foreground">{props.selected ? "✓" : ""}</Text>
+    </Pressable>
+  );
+}
+
 export function ListRow(props: {
   readonly title: string;
   readonly lines: readonly string[];

@@ -87,10 +87,27 @@ export type RunLogRead = {
   readonly retainedBytes: number;
 };
 
+/** One normalized OpenCode model choice; `id` is the provider/model slug. */
+export type ModelChoice = {
+  readonly id: string;
+  readonly providerID: string;
+  readonly modelID: string;
+  readonly name: string;
+  readonly isDefault?: boolean;
+};
+
+export type ModelCatalog = {
+  readonly serverVersion: string;
+  /** Omitting `model` on an Agent Job uses this server-side default. */
+  readonly defaultModel?: string;
+  readonly models: readonly ModelChoice[];
+};
+
 /** Param list for the plain Automations navigation stack. */
 export type AutomationsStackParamList = {
   readonly AutomationsHome: undefined;
   readonly AutomationJob: { readonly jobId: string; readonly name?: string };
+  readonly AutomationJobEditor: { readonly jobId: string } | undefined;
   readonly AutomationRun: { readonly runId: string };
 };
 
@@ -100,6 +117,10 @@ export type ContractError = {
   readonly requestId?: string;
   /** Present on `job_running`: the active Run the server pointed at. */
   readonly run?: AutomationRun;
+  /** Present on `revision_conflict` and `name_conflict`: the current Job. */
+  readonly job?: AutomationJob;
+  /** Present on `validation_failed`: per-field messages from the server. */
+  readonly fieldErrors?: Record<string, readonly string[]>;
 };
 
 export type AutomationsResult<T> =
@@ -142,6 +163,8 @@ export function interpretAutomationsResponse<T>(
   }
   if (body && typeof body === "object" && typeof body.code === "string") {
     const run = (body as { run?: unknown }).run;
+    const job = (body as { job?: unknown }).job;
+    const fieldErrors = (body as { fieldErrors?: unknown }).fieldErrors;
     return {
       kind: "error",
       error: {
@@ -149,6 +172,10 @@ export function interpretAutomationsResponse<T>(
         message: typeof body.message === "string" ? body.message : "The request failed.",
         ...(typeof body.requestId === "string" ? { requestId: body.requestId } : {}),
         ...(run && typeof run === "object" ? { run: run as AutomationRun } : {}),
+        ...(job && typeof job === "object" ? { job: job as AutomationJob } : {}),
+        ...(fieldErrors && typeof fieldErrors === "object"
+          ? { fieldErrors: fieldErrors as Record<string, readonly string[]> }
+          : {}),
       },
     };
   }
@@ -194,6 +221,34 @@ export function readLog(body: unknown): RunLogRead | null {
   const candidate = log as { text?: unknown; nextCursor?: unknown; complete?: unknown };
   if (typeof candidate.text !== "string" || typeof candidate.nextCursor !== "string") return null;
   return log as RunLogRead;
+}
+
+export function readModels(body: unknown): ModelCatalog | null {
+  const candidate = body as { serverVersion?: unknown; models?: unknown } | null;
+  if (
+    !candidate ||
+    typeof candidate.serverVersion !== "string" ||
+    !Array.isArray(candidate.models)
+  ) {
+    return null;
+  }
+  return candidate as ModelCatalog;
+}
+
+export function readSecretReferenceNames(body: unknown): string[] | null {
+  const names = (body as { secretReferences?: unknown } | null)?.secretReferences;
+  return Array.isArray(names) && names.every((name) => typeof name === "string")
+    ? (names as string[])
+    : null;
+}
+
+/** A successful create or edit answers `{ kind: "ok", job }`. */
+export function readJobMutation(body: unknown): AutomationJob | null {
+  const candidate = body as { kind?: unknown; job?: unknown } | null;
+  if (!candidate || candidate.kind !== "ok") return null;
+  return candidate.job && typeof candidate.job === "object"
+    ? (candidate.job as AutomationJob)
+    : null;
 }
 
 export function readArtifacts(body: unknown): ArtifactSummary[] | null {

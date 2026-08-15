@@ -2,19 +2,24 @@ import { useMemo } from "react";
 
 import { useSavedRemoteConnection } from "../../../state/use-remote-environment-registry";
 import { useWorkspaceState } from "../../../state/workspace";
+import type { JobDefinitionInput } from "./automations-authoring";
 import {
   interpretAutomationsResponse,
   readArtifacts,
   readJob,
+  readJobMutation,
   readJobs,
   readLog,
+  readModels,
   readRun,
   readRuns,
+  readSecretReferenceNames,
   readTriggerResult,
   type ArtifactSummary,
   type AutomationJob,
   type AutomationRun,
   type AutomationsResult,
+  type ModelCatalog,
   type RunLogRead,
 } from "./automations-state";
 
@@ -29,6 +34,26 @@ const REQUEST_TIMEOUT_MS = 15_000;
 export type AutomationsClient = {
   readonly listJobs: () => Promise<AutomationsResult<AutomationJob[]>>;
   readonly getJob: (jobId: string) => Promise<AutomationsResult<AutomationJob>>;
+  /** Live normalized OpenCode model choices for Agent Job authoring. */
+  readonly listModels: () => Promise<AutomationsResult<ModelCatalog>>;
+  /** Configured Secret Reference names; values never enter this contract. */
+  readonly listSecretReferences: () => Promise<AutomationsResult<string[]>>;
+  /**
+   * `confirmCommand` is the authority-bearing review confirmation: for a
+   * new or changed shell command it must repeat the exact command text the
+   * review sheet displayed, or the server rejects the save.
+   */
+  readonly createJob: (
+    definition: JobDefinitionInput,
+    idempotencyKey: string,
+    confirmCommand?: string,
+  ) => Promise<AutomationsResult<AutomationJob>>;
+  readonly updateJob: (
+    jobId: string,
+    revision: number,
+    definition: JobDefinitionInput,
+    confirmCommand?: string,
+  ) => Promise<AutomationsResult<AutomationJob>>;
   readonly listRuns: (jobId: string, limit?: number) => Promise<AutomationsResult<AutomationRun[]>>;
   readonly runNow: (
     jobId: string,
@@ -89,6 +114,26 @@ export function createAutomationsClient(baseUrl: string, bearerToken: string): A
   return {
     listJobs: () => call("/jobs", readJobs),
     getJob: (jobId) => call(`/jobs/${encodeId(jobId)}`, readJob),
+    listModels: () => call("/models", readModels),
+    listSecretReferences: () => call("/secret-references", readSecretReferenceNames),
+    createJob: (definition, idempotencyKey, confirmCommand) =>
+      call("/jobs", readJobMutation, {
+        method: "POST",
+        body: JSON.stringify({
+          definition,
+          idempotencyKey,
+          ...(confirmCommand !== undefined ? { confirmCommand } : {}),
+        }),
+      }),
+    updateJob: (jobId, revision, definition, confirmCommand) =>
+      call(`/jobs/${encodeId(jobId)}`, readJobMutation, {
+        method: "PUT",
+        body: JSON.stringify({
+          revision,
+          definition,
+          ...(confirmCommand !== undefined ? { confirmCommand } : {}),
+        }),
+      }),
     listRuns: (jobId, limit = 100) =>
       call(`/jobs/${encodeId(jobId)}/runs?limit=${limit}`, readRuns),
     runNow: (jobId, idempotencyKey, confirmDisabled) =>

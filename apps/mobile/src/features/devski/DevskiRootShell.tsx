@@ -15,6 +15,7 @@ import { useEnvironments } from "../../state/environments";
 import { ConnectionsNewRouteScreen } from "../connection/ConnectionsNewRouteScreen";
 import { useConnectionController } from "../connection/useConnectionController";
 import { AutomationJobDetailScreen } from "./automations/AutomationJobDetailScreen";
+import { AutomationJobEditorScreen } from "./automations/AutomationJobEditorScreen";
 import { AutomationRunDetailScreen } from "./automations/AutomationRunDetailScreen";
 import { AutomationsJobsScreen } from "./automations/AutomationsJobsScreen";
 import { SeoPlaceholderScreen } from "./SeoPlaceholderScreen";
@@ -37,6 +38,10 @@ const AutomationsStack = createNativeStackNavigator({
     AutomationJob: createNativeStackScreen({
       screen: AutomationJobDetailScreen,
       options: { title: "Job" },
+    }),
+    AutomationJobEditor: createNativeStackScreen({
+      screen: AutomationJobEditorScreen,
+      options: { title: "Job Editor" },
     }),
     AutomationRun: createNativeStackScreen({
       screen: AutomationRunDetailScreen,

@@ -14,7 +14,7 @@ import {
   type AutomationJob,
   type AutomationsStackParamList,
 } from "./automations-state";
-import { ListRow, SectionTitle } from "./AutomationsUi";
+import { ListRow, PlainButton, SectionTitle } from "./AutomationsUi";
 
 type LoadState =
   | { readonly kind: "loading" }
@@ -30,8 +30,8 @@ function jobLines(job: AutomationJob): string[] {
 
 /**
  * Plain Automations home: every active and archived Job with its next,
- * active, and latest Run state. Read-and-operate only — Job creation and
- * lifecycle controls beyond Stop are separate tickets.
+ * active, and latest Run state, plus entry into the Job editor for
+ * creation. Lifecycle controls beyond Stop are separate tickets (PLO-419).
  */
 export function AutomationsJobsScreen() {
   const navigation = useNavigation<NavigationProp<AutomationsStackParamList>>();
@@ -87,6 +87,10 @@ export function AutomationsJobsScreen() {
         />
       }
     >
+      <PlainButton
+        label="New Job"
+        onPress={() => navigation.navigate("AutomationJobEditor", undefined)}
+      />
       {state.kind === "loading" ? (
         <Text className="text-sm text-foreground-muted">Loading Jobs…</Text>
       ) : null}

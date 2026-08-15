@@ -216,6 +216,11 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
           />
 
           <View className="mt-3 gap-2">
+            <PlainButton
+              label="Edit Job"
+              disabled={Boolean(state.job.archivedAt)}
+              onPress={() => navigation.navigate("AutomationJobEditor", { jobId: state.job.id })}
+            />
             {state.job.activeRunId ? (
               <PlainButton
                 label="View active Run"
