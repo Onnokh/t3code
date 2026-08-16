@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildImpressionChart, formatShortDate, recentDays } from "./seo-overview";
-import type { SeoHistoryDay } from "./seo-state";
+import { buildImpressionChart, formatShortDate, recentDays, registryRow } from "./seo-overview";
+import type { SeoHistoryDay, SeoRegistryTarget } from "./seo-state";
 
 function day(date: string, impressions: number, provisional = false): SeoHistoryDay {
   return { date, provisional, impressions, clicks: 0, ctr: 0, position: 0 };
@@ -68,6 +68,45 @@ describe("recentDays", () => {
     const days = [day("2026-08-11", 1), day("2026-08-12", 2)];
     recentDays(days);
     expect(days.map((entry) => entry.date)).toEqual(["2026-08-11", "2026-08-12"]);
+  });
+});
+
+function target(overrides: Partial<SeoRegistryTarget> = {}): SeoRegistryTarget {
+  return {
+    targetUrl: "/chrome-extension",
+    phase: "LIVE",
+    state: "measuring",
+    indexed: "indexed",
+    coverageState: "Submitted and indexed",
+    inspectedAt: "2026-08-15",
+    priority: "P0",
+    intent: "product",
+    publishedAt: "2026-07-16",
+    baselineDate: null,
+    status: "Published",
+    whyOpportunity: null,
+    measuredFrom: "2026-07-17",
+    window: { impressions: 7, clicks: 0, ctr: 0, position: 36.4 },
+    baseline: null,
+    keywords: [
+      { keyword: "chrome read later extension", cluster: "capture", intent: "p", country: "USA" },
+    ],
+    ...overrides,
+  };
+}
+
+describe("registryRow", () => {
+  it("reads as priority, target, window impressions, and phase", () => {
+    expect(registryRow(target())).toEqual(["P0", "/chrome-extension", "7", "LIVE"]);
+  });
+
+  it("marks an inventory-only page rather than borrowing a priority", () => {
+    expect(registryRow(target({ priority: null, phase: "PAGE" }))[0]).toBe("—");
+  });
+
+  it("groups the thousands a large Site reaches", () => {
+    const large = target({ window: { impressions: 5791, clicks: 854, ctr: 0.15, position: 4.2 } });
+    expect(registryRow(large)[2]).toBe("5,791");
   });
 });
 

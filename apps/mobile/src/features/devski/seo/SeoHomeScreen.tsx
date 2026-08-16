@@ -11,8 +11,11 @@ import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cach
 import {
   formatShortDate,
   recentDays,
+  registryRow,
   OVERVIEW_HISTORY_DAYS,
   OVERVIEW_LOG_ENTRIES,
+  OVERVIEW_REGISTRY_ROWS,
+  type RegistryRow,
 } from "./seo-overview";
 import {
   displayableEnvelope,
@@ -22,6 +25,7 @@ import {
   summarizeSeoError,
   type SeoHistoryDay,
   type SeoLogEntry,
+  type SeoRegistryTarget,
   type SeoSite,
   type SeoStackParamList,
 } from "./seo-state";
@@ -68,6 +72,53 @@ function DailyTable(props: { readonly days: readonly SeoHistoryDay[] }) {
             formatCount(day.clicks),
             formatPosition(day.position),
           ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+/**
+ * One Registry line, in the same table grammar as the daily rows: the
+ * label on the left, its numbers on the right. A long target keeps both
+ * ends and loses its middle, which is where paths repeat themselves.
+ */
+function RegistryRowLine(props: {
+  readonly cells: RegistryRow;
+  readonly muted?: boolean;
+  readonly onPress?: () => void;
+}) {
+  const tone = props.muted ? "text-foreground-muted" : "text-foreground";
+  const line = (
+    <View className="flex-row items-center py-1">
+      <Text className={`w-7 text-sm ${tone}`}>{props.cells[0]}</Text>
+      <Text className={`flex-[2] text-sm ${tone}`} numberOfLines={1} ellipsizeMode="middle">
+        {props.cells[1]}
+      </Text>
+      <Text className={`flex-1 text-right text-sm ${tone}`}>{props.cells[2]}</Text>
+      <Text className={`flex-1 text-right text-sm ${tone}`}>{props.cells[3]}</Text>
+    </View>
+  );
+  if (!props.onPress) return line;
+  return (
+    <Pressable accessibilityRole="button" onPress={props.onPress} className="active:opacity-70">
+      {line}
+    </Pressable>
+  );
+}
+
+function RegistryTable(props: {
+  readonly targets: readonly SeoRegistryTarget[];
+  readonly onSelect: (path: string) => void;
+}) {
+  return (
+    <View>
+      <RegistryRowLine cells={["pr", "target", "impr.", "phase"]} muted />
+      {props.targets.map((target) => (
+        <RegistryRowLine
+          key={target.targetUrl}
+          cells={registryRow(target)}
+          onPress={() => props.onSelect(target.targetUrl)}
         />
       ))}
     </View>
@@ -148,11 +199,18 @@ export function SeoHomeScreen() {
     () => (client && siteId ? () => client.log(siteId) : null),
     [client, siteId],
   );
+  const registryFetcher = useMemo(
+    () => (client && siteId ? () => client.registry(siteId) : null),
+    [client, siteId],
+  );
   const history = useSeoRead(
     siteId ? `history:${siteId}:${OVERVIEW_HISTORY_DAYS}` : null,
     historyFetcher,
   );
   const log = useSeoRead(siteId ? `log:${siteId}` : null, logFetcher);
+  // The same key the Registry screen reads, so opening it from here is a
+  // hydrated screen rather than a second wait for the same rows.
+  const registry = useSeoRead(siteId ? `registry:${siteId}` : null, registryFetcher);
 
   if (!client) {
     return (
@@ -168,8 +226,12 @@ export function SeoHomeScreen() {
 
   const historyEnvelope = displayableEnvelope(history.read);
   const logEnvelope = displayableEnvelope(log.read);
+  const registryEnvelope = displayableEnvelope(registry.read);
   const days = historyEnvelope?.data.days ?? [];
   const actions = logEnvelope?.data.actions ?? [];
+  // Ranksta orders the Registry by priority; the phone keeps that order
+  // rather than inventing one of its own.
+  const targets = registryEnvelope?.data.targets ?? [];
 
   return (
     <>
@@ -208,9 +270,12 @@ export function SeoHomeScreen() {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              void Promise.all([loadSites(), history.reload(), log.reload()]).finally(() =>
-                setRefreshing(false),
-              );
+              void Promise.all([
+                loadSites(),
+                history.reload(),
+                log.reload(),
+                registry.reload(),
+              ]).finally(() => setRefreshing(false));
             }}
           />
         }
@@ -263,6 +328,23 @@ export function SeoHomeScreen() {
                     onPress={() => navigation.navigate("SeoPage", { path: entry.path })}
                   />
                 ))
+            )}
+
+            <SeoSectionHeader
+              title="Registry"
+              actionLabel="see more"
+              onPress={() => navigation.navigate("SeoRegistry")}
+            />
+            <SeoStaleNote read={registry.read} />
+            {targets.length === 0 ? (
+              <Text className="text-sm text-foreground-muted">
+                The Registry has no targets yet.
+              </Text>
+            ) : (
+              <RegistryTable
+                targets={targets.slice(0, OVERVIEW_REGISTRY_ROWS)}
+                onSelect={(path) => navigation.navigate("SeoPage", { path })}
+              />
             )}
           </>
         ) : null}

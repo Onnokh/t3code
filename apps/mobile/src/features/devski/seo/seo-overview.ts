@@ -5,12 +5,13 @@
  * recomputes a Ranksta metric — it only positions returned numbers.
  */
 
-import type { SeoHistoryDay } from "./seo-state";
+import { formatCount, type SeoHistoryDay, type SeoRegistryTarget } from "./seo-state";
 
 /** The overview reads one window; the History screen owns the long view. */
 export const OVERVIEW_HISTORY_DAYS = 28;
 export const OVERVIEW_DAILY_ROWS = 5;
 export const OVERVIEW_LOG_ENTRIES = 3;
+export const OVERVIEW_REGISTRY_ROWS = 5;
 
 export type ChartPoint = { readonly x: number; readonly y: number };
 
@@ -78,6 +79,28 @@ export function recentDays(
   limit: number = OVERVIEW_DAILY_ROWS,
 ): readonly SeoHistoryDay[] {
   return [...days].reverse().slice(0, limit);
+}
+
+/** One Registry row, in the column order the overview lays it out. */
+export type RegistryRow = readonly [
+  priority: string,
+  target: string,
+  impressions: string,
+  phase: string,
+];
+
+/**
+ * One Registry target as its four columns: Ranksta's priority, the target
+ * page, what the window measured, and Ranksta's phase. An inventory-only
+ * page carries no priority and says so rather than borrowing one.
+ */
+export function registryRow(target: SeoRegistryTarget): RegistryRow {
+  return [
+    target.priority ?? "—",
+    target.targetUrl,
+    formatCount(target.window.impressions),
+    target.phase,
+  ];
 }
 
 /** `2026-08-13` becomes `08-13`, the overview's compact date column. */
