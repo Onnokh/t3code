@@ -179,6 +179,9 @@ const config: ExpoConfig = {
   platforms: ["ios"],
   scheme: variant.scheme,
   version: DEVSKI_IDENTITY.marketingVersion,
+  // Upstream sets a fingerprint `runtimeVersion` for its OTA channel. Devski
+  // keeps `updates.enabled` false, and the release guard refuses a
+  // `runtimeVersion` while OTA is off, so that field stays out of this config.
   orientation: "portrait",
   icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",

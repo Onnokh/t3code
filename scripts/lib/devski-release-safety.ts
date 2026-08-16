@@ -17,6 +17,7 @@ const STATEFUL_UPSTREAM_WORKFLOWS = new Set([
   "deploy-relay.yml",
   "mobile-eas-preview.yml",
   "mobile-eas-production.yml",
+  "publish-aur.yml",
   "release.yml",
   "web-preview.yml",
 ]);
