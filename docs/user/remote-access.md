@@ -122,6 +122,21 @@ npx t3 serve --tailscale-serve --tailscale-serve-port 8443
 Once paired, add projects normally: open the Command Palette and choose **Add Project**, then pick
 the environment the project lives on. Every saved environment is offered, not only the local one.
 
+#### Naming the Environment
+
+Clients show each server under a name the server reads from its host machine. A server in a
+container has no such name, so the list under **Remote Environments** shows the container ID, which
+changes on each redeploy.
+
+Set `T3CODE_ENVIRONMENT_LABEL` to give the environment a stable name. It wins over the detected
+name.
+
+```bash
+T3CODE_ENVIRONMENT_LABEL="Build Box" npx t3 serve
+```
+
+If the variable is unset, empty, or only spaces, the server keeps the detected name.
+
 ### Option 3: Desktop-Managed SSH Launch
 
 Use this when you want the desktop app to start or reuse T3 Code on another machine over SSH.
