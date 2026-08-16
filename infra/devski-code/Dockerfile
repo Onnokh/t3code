@@ -17,11 +17,48 @@ FROM node:24.13.1-bookworm-slim
 # change — the running container never self-updates (DISABLE_AUTOUPDATER).
 ARG CLAUDE_CODE_VERSION=2.1.231
 
-# git: checkpointing and project management. Build tools: node-pty.
+# git: checkpointing and project management. curl: fetching the source-control
+# CLIs below. Build tools: node-pty.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git ca-certificates openssh-client python3 make g++ \
+ && apt-get install -y --no-install-recommends git ca-certificates curl openssh-client python3 make g++ \
  && rm -rf /var/lib/apt/lists/* \
  && corepack enable
+
+# Source-control CLIs, matching the Digital Home Harness tool-belt. Agents
+# reach for them directly, and T3's own change-request code shells out to both
+# (GitHubPullRequestCli, GitLabPullRequestCli) — without them that surface
+# fails with its "not installed" readiness hint. `glab` publishes no apt
+# repository, so its release .deb is pinned at the Harness version.
+ARG GLAB_VERSION=1.108.0
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list \
+ && apt-get update && apt-get install -y --no-install-recommends gh \
+ && curl -fsSL -o /tmp/glab.deb "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_linux_$(dpkg --print-architecture).deb" \
+ && apt-get install -y /tmp/glab.deb && rm /tmp/glab.deb \
+ && rm -rf /var/lib/apt/lists/* \
+ && gh --version && glab --version
+
+# `glab` posts telemetry and checks for a newer release on every invocation.
+# As a git credential helper it runs on every fetch and push, so both become a
+# network round-trip in the critical path. Declared as environment rather than
+# `glab config set`, which would write under a path a volume can mask.
+ENV GLAB_SEND_TELEMETRY=0 \
+    GLAB_CHECK_UPDATE=0
+
+# Make a plain `git clone` of a private repository work with no token in the
+# URL and no interactive login. Each helper resolves the credential from
+# GH_TOKEN / GITLAB_TOKEN at call time, so the image holds no secret; this is
+# what `gh auth setup-git` writes, made explicit because that command needs an
+# authenticated host at build time and this build has none. Self-hosted GitLab
+# needs its own key, so GITLAB_HOST is honoured when it is not gitlab.com.
+ARG GITLAB_HOST=gitlab.com
+RUN git config --system credential."https://github.com".helper '!gh auth git-credential' \
+ && git config --system credential."https://gitlab.com".helper '!glab auth git-credential' \
+ && if [ "${GITLAB_HOST}" != "gitlab.com" ]; then \
+      git config --system credential."https://${GITLAB_HOST}".helper '!glab auth git-credential'; \
+    fi
 
 RUN npm install -g --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
  && claude --version

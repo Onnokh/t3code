@@ -21,9 +21,44 @@ ENV TZ=Europe/Amsterdam \
     PATH="/opt/bun-global/bin:$PATH"
 
 # git: OpenCode reads repository state inside the Code Workspace Root.
+# curl: fetching the source-control CLIs below.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git ca-certificates ripgrep \
+ && apt-get install -y --no-install-recommends git ca-certificates curl ripgrep \
  && rm -rf /var/lib/apt/lists/*
+
+# Source-control CLIs, matching the Digital Home Harness tool-belt and the T3
+# environment image. Interactive OpenCode sessions clone and review through
+# them inside the shared Code Workspace Root. `glab` publishes no apt
+# repository, so its release .deb is pinned at the Harness version.
+ARG GLAB_VERSION=1.108.0
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list \
+ && apt-get update && apt-get install -y --no-install-recommends gh \
+ && curl -fsSL -o /tmp/glab.deb "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_linux_$(dpkg --print-architecture).deb" \
+ && apt-get install -y /tmp/glab.deb && rm /tmp/glab.deb \
+ && rm -rf /var/lib/apt/lists/* \
+ && gh --version && glab --version
+
+# `glab` posts telemetry and checks for a newer release on every invocation.
+# As a git credential helper it runs on every fetch and push, so both become a
+# network round-trip in the critical path. This MUST be environment rather than
+# `glab config set --global`: that writes under XDG_CONFIG_HOME, which below is
+# a volume, and a volume mount masks whatever the image put there.
+ENV GLAB_SEND_TELEMETRY=0 \
+    GLAB_CHECK_UPDATE=0
+
+# Make a plain `git clone` of a private repository work with no token in the
+# URL and no interactive login. Each helper resolves the credential from
+# GH_TOKEN / GITLAB_TOKEN at call time, so the image holds no secret. Self-hosted
+# GitLab needs its own key, so GITLAB_HOST is honoured when it is not gitlab.com.
+ARG GITLAB_HOST=gitlab.com
+RUN git config --system credential."https://github.com".helper '!gh auth git-credential' \
+ && git config --system credential."https://gitlab.com".helper '!glab auth git-credential' \
+ && if [ "${GITLAB_HOST}" != "gitlab.com" ]; then \
+      git config --system credential."https://${GITLAB_HOST}".helper '!glab auth git-credential'; \
+    fi
 
 # Pinned numeric prerelease — never the floating `next` tag. The trusted
 # postinstall selects the platform binary.
