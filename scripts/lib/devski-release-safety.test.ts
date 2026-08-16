@@ -299,7 +299,7 @@ function devskiProject(developmentTeam: string | undefined) {
     targetConfiguration({
       bundleIdentifier: "dev.onkie.devski.sharing",
       name: "Release",
-      developmentTeam,
+      ...(developmentTeam === undefined ? {} : { developmentTeam }),
     }),
   ]);
 }
