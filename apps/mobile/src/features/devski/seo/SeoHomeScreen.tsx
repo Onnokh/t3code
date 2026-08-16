@@ -29,7 +29,7 @@ import {
   type SeoSite,
   type SeoStackParamList,
 } from "./seo-state";
-import { SeoImpressionChart } from "./SeoImpressionChart";
+import { SeoDailyChart } from "./SeoDailyChart";
 import { SeoSectionHeader, SeoStaleNote } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
@@ -295,7 +295,7 @@ export function SeoHomeScreen() {
               <Text className="mt-0.5 text-base text-foreground-muted">{selectedSite.url}</Text>
             </View>
             <SeoStaleNote read={history.read} />
-            <SeoImpressionChart days={days} loading={history.read.kind === "loading"} />
+            <SeoDailyChart days={days} loading={history.read.kind === "loading"} />
 
             <SeoSectionHeader
               title="Daily overview"

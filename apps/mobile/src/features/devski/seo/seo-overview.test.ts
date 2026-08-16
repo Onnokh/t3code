@@ -1,49 +1,57 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildImpressionChart, formatShortDate, recentDays, registryRow } from "./seo-overview";
+import {
+  barIndexAt,
+  buildDailyChart,
+  formatShortDate,
+  recentDays,
+  registryRow,
+} from "./seo-overview";
 import type { SeoHistoryDay, SeoRegistryTarget } from "./seo-state";
 
-function day(date: string, impressions: number, provisional = false): SeoHistoryDay {
-  return { date, provisional, impressions, clicks: 0, ctr: 0, position: 0 };
+function day(date: string, impressions: number, clicks = 0, provisional = false): SeoHistoryDay {
+  return { date, provisional, impressions, clicks, ctr: 0, position: 0 };
 }
 
 const size = { width: 100, height: 50 };
 
-describe("buildImpressionChart", () => {
+describe("buildDailyChart", () => {
   it("draws nothing without days or without a box", () => {
-    expect(buildImpressionChart([], size).line).toBe("");
-    expect(buildImpressionChart([day("2026-08-13", 5)], { width: 0, height: 50 }).line).toBe("");
+    expect(buildDailyChart([], size).bars).toEqual([]);
+    expect(buildDailyChart([day("2026-08-13", 5)], { width: 0, height: 50 }).bars).toEqual([]);
   });
 
-  it("spreads the days across the width, oldest first", () => {
-    const chart = buildImpressionChart(
-      [day("2026-08-11", 0), day("2026-08-12", 5), day("2026-08-13", 10)],
-      size,
-    );
-    expect(chart.points).toEqual([
-      { x: 0, y: 50 },
-      { x: 50, y: 25 },
-      { x: 100, y: 0 },
-    ]);
-    expect(chart.line).toBe("M0,50 L50,25 L100,0");
-    expect(chart.last).toEqual({ x: 100, y: 0 });
+  it("makes the bar the day's impressions and its solid part the clicks", () => {
+    const chart = buildDailyChart([day("2026-08-12", 10, 5), day("2026-08-13", 5)], size);
+    expect(chart.slotWidth).toBe(50);
+    expect(chart.bars[0]).toEqual({
+      date: "2026-08-12",
+      provisional: false,
+      x: 1,
+      width: 48,
+      top: 0,
+      height: 50,
+      clicksTop: 25,
+      clicksHeight: 25,
+    });
+    expect(chart.bars[1]?.height).toBe(25);
+    expect(chart.bars[1]?.clicksHeight).toBe(0);
   });
 
-  it("centres a single day rather than dividing by zero", () => {
-    const chart = buildImpressionChart([day("2026-08-13", 7)], size);
-    expect(chart.points).toEqual([{ x: 50, y: 0 }]);
+  it("keeps a fully clicked day inside its own bar", () => {
+    const chart = buildDailyChart([day("2026-08-13", 10, 10)], size);
+    expect(chart.bars[0]?.height).toBe(50);
+    expect(chart.bars[0]?.clicksHeight).toBe(50);
   });
 
   it("scales from zero, so a low series reads low", () => {
-    const chart = buildImpressionChart([day("2026-08-12", 1), day("2026-08-13", 2)], size);
-    expect(chart.points).toEqual([
-      { x: 0, y: 25 },
-      { x: 100, y: 0 },
-    ]);
+    const chart = buildDailyChart([day("2026-08-12", 1), day("2026-08-13", 2)], size);
+    expect(chart.bars[0]?.height).toBe(25);
+    expect(chart.bars[1]?.height).toBe(50);
   });
 
   it("labels the peak, its midpoint, and zero", () => {
-    const chart = buildImpressionChart([day("2026-08-12", 0), day("2026-08-13", 13)], size);
+    const chart = buildDailyChart([day("2026-08-12", 0), day("2026-08-13", 13)], size);
     expect(chart.ticks).toEqual([
       { value: 13, y: 0 },
       { value: 7, y: 23.08 },
@@ -52,15 +60,32 @@ describe("buildImpressionChart", () => {
   });
 
   it("collapses the labels to one when nothing was seen", () => {
-    const chart = buildImpressionChart([day("2026-08-12", 0), day("2026-08-13", 0)], size);
+    const chart = buildDailyChart([day("2026-08-12", 0), day("2026-08-13", 0)], size);
     expect(chart.ticks).toEqual([{ value: 0, y: 50 }]);
-    expect(chart.line).toBe("M0,50 L100,50");
+    expect(chart.bars.every((bar) => bar.height === 0)).toBe(true);
+  });
+});
+
+describe("barIndexAt", () => {
+  const chart = buildDailyChart([day("2026-08-12", 5), day("2026-08-13", 10)], size);
+
+  it("answers for the whole slot, not just the drawn bar", () => {
+    expect(barIndexAt(0, chart)).toBe(0);
+    expect(barIndexAt(49.9, chart)).toBe(0);
+    expect(barIndexAt(50, chart)).toBe(1);
+    expect(barIndexAt(99, chart)).toBe(1);
+  });
+
+  it("answers with nothing outside the plot, or with nothing drawn", () => {
+    expect(barIndexAt(-1, chart)).toBe(null);
+    expect(barIndexAt(101, chart)).toBe(null);
+    expect(barIndexAt(10, buildDailyChart([], size))).toBe(null);
   });
 });
 
 describe("recentDays", () => {
   it("returns the newest days first, capped", () => {
-    const days = [day("2026-08-11", 1), day("2026-08-12", 2), day("2026-08-13", 3, true)];
+    const days = [day("2026-08-11", 1), day("2026-08-12", 2), day("2026-08-13", 3, 0, true)];
     expect(recentDays(days, 2).map((entry) => entry.date)).toEqual(["2026-08-13", "2026-08-12"]);
   });
 
