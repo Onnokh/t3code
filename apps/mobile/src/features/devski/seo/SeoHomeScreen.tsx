@@ -8,6 +8,7 @@ import { ErrorBanner } from "../../../components/ErrorBanner";
 import { NativeHeaderToolbar } from "../../../native/StackHeader";
 import { FieldRow, ListRow, SectionTitle } from "../automations/AutomationsUi";
 import { useSeoClient, useSeoRead } from "./seo-api";
+import { readSeoCacheEntry, writeSeoCacheEntry } from "./seo-cache";
 import {
   describeIndexState,
   displayableEnvelope,
@@ -29,6 +30,8 @@ type SitesState =
   | { readonly kind: "loading" }
   | { readonly kind: "error"; readonly message: string }
   | { readonly kind: "ready"; readonly sites: readonly SeoSite[] };
+
+const SITES_CACHE_KEY = "sites";
 
 const SECTION_LINKS: ReadonlyArray<{
   readonly screen: keyof Omit<SeoStackParamList, "SeoPage" | "SeoHome">;
@@ -67,14 +70,21 @@ export function SeoHomeScreen() {
   const navigation = useNavigation<NavigationProp<SeoStackParamList>>();
   const client = useSeoClient();
   const { selectedSiteId, ready: preferenceReady, select } = useSeoSitePreference();
-  const [sitesState, setSitesState] = useState<SitesState>({ kind: "loading" });
+  // The Site list is what the switcher is made of, so it hydrates too:
+  // returning to this Area should not empty the menu for a round trip.
+  const [sitesState, setSitesState] = useState<SitesState>(() => {
+    const cached = readSeoCacheEntry<readonly SeoSite[]>(SITES_CACHE_KEY);
+    return cached === null ? { kind: "loading" } : { kind: "ready", sites: cached };
+  });
   const [refreshing, setRefreshing] = useState(false);
 
   const loadSites = useCallback(async () => {
     if (!client) return;
     const result = await client.sites();
-    if (result.kind === "ok") setSitesState({ kind: "ready", sites: result.value });
-    else setSitesState({ kind: "error", message: summarizeSeoError(result) });
+    if (result.kind === "ok") {
+      writeSeoCacheEntry(SITES_CACHE_KEY, result.value);
+      setSitesState({ kind: "ready", sites: result.value });
+    } else setSitesState({ kind: "error", message: summarizeSeoError(result) });
   }, [client]);
 
   useFocusEffect(
@@ -107,9 +117,9 @@ export function SeoHomeScreen() {
     () => (client && siteId ? () => client.history(siteId, 28) : null),
     [client, siteId],
   );
-  const status = useSeoRead(statusFetcher);
-  const pages = useSeoRead(pagesFetcher);
-  const history = useSeoRead(historyFetcher);
+  const status = useSeoRead(siteId ? `status:${siteId}` : null, statusFetcher);
+  const pages = useSeoRead(siteId ? `pages:${siteId}` : null, pagesFetcher);
+  const history = useSeoRead(siteId ? `history:${siteId}:28` : null, historyFetcher);
 
   if (!client) {
     return (

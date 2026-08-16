@@ -4,6 +4,7 @@ import { useFocusEffect } from "@react-navigation/native";
 
 import { useSavedRemoteConnection } from "../../../state/use-remote-environment-registry";
 import { useWorkspaceState } from "../../../state/workspace";
+import { clearSeoCache, readSeoCacheEntry, writeSeoCacheEntry } from "./seo-cache";
 import {
   applySeoResult,
   interpretSeoResponse,
@@ -128,24 +129,39 @@ export function useSeoClient(): SeoClient | null {
   const bearerToken = connection?.bearerToken;
   const httpBaseUrl = connection?.httpBaseUrl;
 
+  // A different environment or a re-issued credential invalidates every
+  // cached read: the next hydration must not show the old session's data.
+  useEffect(() => {
+    clearSeoCache();
+  }, [bearerToken, httpBaseUrl]);
+
   return useMemo(() => {
     if (!bearerToken || !httpBaseUrl) return null;
     return createSeoClient(httpBaseUrl, bearerToken);
   }, [bearerToken, httpBaseUrl]);
 }
 
+function hydratedRead<T>(cacheKey: string | null): SeoRead<T> {
+  const cached = readSeoCacheEntry<SeoEnvelope<T>>(cacheKey);
+  return cached === null ? { kind: "loading" } : { kind: "ready", envelope: cached };
+}
+
 /**
- * One screen's revalidating read: loads on focus, again when the app
+ * One screen's revalidating read: hydrates from this key's last value,
+ * then loads on focus, again when the app
  * returns to the foreground, and whenever the fetcher identity changes
  * (the selected Site is part of that identity). A failed revalidation
  * retains the last successful envelope so the screen shows visibly stale
  * data instead of losing it. Never triggers a backend sync.
  */
-export function useSeoRead<T>(fetcher: (() => Promise<SeoResult<SeoEnvelope<T>>>) | null): {
+export function useSeoRead<T>(
+  cacheKey: string | null,
+  fetcher: (() => Promise<SeoResult<SeoEnvelope<T>>>) | null,
+): {
   readonly read: SeoRead<T>;
   readonly reload: () => Promise<void>;
 } {
-  const [read, setRead] = useState<SeoRead<T>>({ kind: "loading" });
+  const [read, setRead] = useState<SeoRead<T>>(() => hydratedRead<T>(cacheKey));
   const readRef = useRef(read);
   readRef.current = read;
   const generation = useRef(0);
@@ -155,15 +171,16 @@ export function useSeoRead<T>(fetcher: (() => Promise<SeoResult<SeoEnvelope<T>>>
     const ticket = ++generation.current;
     const result = await fetcher();
     if (generation.current !== ticket) return;
+    if (result.kind === "ok") writeSeoCacheEntry(cacheKey, result.value);
     setRead(applySeoResult(readRef.current, result));
-  }, [fetcher]);
+  }, [cacheKey, fetcher]);
 
-  // A new fetcher identity (Site change, repair) starts from loading so
-  // another Site's retained data can never masquerade as this Site's.
+  // A new key (Site change, repair) restarts from that key's own last
+  // value, so another Site's data can never masquerade as this Site's.
   useEffect(() => {
     generation.current += 1;
-    setRead({ kind: "loading" });
-  }, [fetcher]);
+    setRead(hydratedRead<T>(cacheKey));
+  }, [cacheKey]);
 
   useFocusEffect(
     useCallback(() => {

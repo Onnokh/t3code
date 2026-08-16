@@ -36,7 +36,10 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
     () => (client && selectedSiteId ? () => client.page(selectedSiteId, path) : null),
     [client, selectedSiteId, path],
   );
-  const { read, reload } = useSeoRead(fetcher);
+  const { read, reload } = useSeoRead(
+    selectedSiteId ? `page:${selectedSiteId}:${path}` : null,
+    fetcher,
+  );
   const envelope = displayableEnvelope(read);
   const page = envelope?.data ?? null;
 

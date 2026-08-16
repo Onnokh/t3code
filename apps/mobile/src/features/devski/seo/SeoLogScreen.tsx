@@ -24,7 +24,7 @@ export function SeoLogScreen() {
     () => (client && selectedSiteId ? () => client.log(selectedSiteId) : null),
     [client, selectedSiteId],
   );
-  const { read, reload } = useSeoRead(fetcher);
+  const { read, reload } = useSeoRead(selectedSiteId ? `log:${selectedSiteId}` : null, fetcher);
   const envelope = displayableEnvelope(read);
 
   if (!client || !selectedSiteId) {
