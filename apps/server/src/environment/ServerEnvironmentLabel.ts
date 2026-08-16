@@ -1,4 +1,8 @@
-import { HostProcessHostname, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import {
+  HostProcessEnvironment,
+  HostProcessHostname,
+  HostProcessPlatform,
+} from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -9,6 +13,8 @@ import * as ProcessRunner from "../processRunner.ts";
 interface ResolveServerEnvironmentLabelInput {
   readonly cwdBaseName: string;
 }
+
+const ENVIRONMENT_LABEL_VARIABLE = "T3CODE_ENVIRONMENT_LABEL";
 
 const ServerEnvironmentLabelCommandProbe = Schema.Literals([
   "macos-computer-name",
@@ -179,9 +185,20 @@ const resolveFriendlyHostLabel = Effect.fn("resolveFriendlyHostLabel")(function*
   return null;
 });
 
+/**
+ * Resolves the name a client shows for this environment. `T3CODE_ENVIRONMENT_LABEL`
+ * wins over every host probe, because a container has no friendly host name and
+ * would otherwise fall back to its container ID.
+ */
 export const resolveServerEnvironmentLabel = Effect.fn("resolveServerEnvironmentLabel")(function* (
   input: ResolveServerEnvironmentLabelInput,
 ) {
+  const environment = yield* HostProcessEnvironment;
+  const configuredLabel = normalizeLabel(environment[ENVIRONMENT_LABEL_VARIABLE]);
+  if (configuredLabel) {
+    return configuredLabel;
+  }
+
   const friendlyHostLabel = yield* resolveFriendlyHostLabel();
   if (friendlyHostLabel) {
     return friendlyHostLabel;

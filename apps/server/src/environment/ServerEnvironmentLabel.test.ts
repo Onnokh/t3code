@@ -7,7 +7,11 @@ import * as PlatformError from "effect/PlatformError";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
-import { HostProcessHostname, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import {
+  HostProcessEnvironment,
+  HostProcessHostname,
+  HostProcessPlatform,
+} from "@t3tools/shared/hostProcess";
 import { vi } from "vite-plus/test";
 
 import * as ProcessRunner from "../processRunner.ts";
@@ -45,15 +49,20 @@ const LinuxMachineInfoLayer = Layer.merge(
         : Effect.succeed(""),
   }),
 );
+// The environment defaults to empty rather than to the reference's real
+// process.env, so a developer who exports T3CODE_ENVIRONMENT_LABEL does not
+// fail the host-probe cases.
 const withHostPlatform = <ROut, E, RIn>(
   layer: Layer.Layer<ROut, E, RIn>,
   platform: NodeJS.Platform,
   hostname: string,
+  environment: NodeJS.ProcessEnv = {},
 ) =>
   Layer.mergeAll(
     layer,
     Layer.succeed(HostProcessPlatform, platform),
     Layer.succeed(HostProcessHostname, hostname),
+    Layer.succeed(HostProcessEnvironment, environment),
   );
 
 afterEach(() => {
@@ -66,6 +75,82 @@ describe("resolveServerEnvironmentLabel", () => {
       const result = yield* ServerEnvironmentLabel.resolveServerEnvironmentLabel({
         cwdBaseName: "t3code",
       }).pipe(Effect.provide(withHostPlatform(TestLayer, "win32", "macbook-pro")));
+
+      expect(result).toBe("macbook-pro");
+    }),
+  );
+
+  it.effect("prefers T3CODE_ENVIRONMENT_LABEL over the macOS ComputerName", () =>
+    Effect.gen(function* () {
+      const result = yield* ServerEnvironmentLabel.resolveServerEnvironmentLabel({
+        cwdBaseName: "t3code",
+      }).pipe(
+        Effect.provide(
+          withHostPlatform(TestLayer, "darwin", "macbook-pro", {
+            T3CODE_ENVIRONMENT_LABEL: "  Production Box  ",
+          }),
+        ),
+      );
+
+      expect(result).toBe("Production Box");
+      expect(runMock).not.toHaveBeenCalled();
+    }),
+  );
+
+  it.effect("prefers T3CODE_ENVIRONMENT_LABEL over the Linux PRETTY_HOSTNAME", () =>
+    Effect.gen(function* () {
+      const result = yield* ServerEnvironmentLabel.resolveServerEnvironmentLabel({
+        cwdBaseName: "t3code",
+      }).pipe(
+        Effect.provide(
+          withHostPlatform(LinuxMachineInfoLayer, "linux", "8892f1a0b7cf", {
+            T3CODE_ENVIRONMENT_LABEL: "Production Box",
+          }),
+        ),
+      );
+
+      expect(result).toBe("Production Box");
+      expect(runMock).not.toHaveBeenCalled();
+    }),
+  );
+
+  it.effect("ignores a whitespace-only T3CODE_ENVIRONMENT_LABEL", () =>
+    Effect.gen(function* () {
+      const result = yield* ServerEnvironmentLabel.resolveServerEnvironmentLabel({
+        cwdBaseName: "t3code",
+      }).pipe(
+        Effect.provide(
+          withHostPlatform(LinuxMachineInfoLayer, "linux", "buildbox", {
+            T3CODE_ENVIRONMENT_LABEL: "   ",
+          }),
+        ),
+      );
+
+      expect(result).toBe("Build Agent 01");
+    }),
+  );
+
+  it.effect("ignores an empty T3CODE_ENVIRONMENT_LABEL", () =>
+    Effect.gen(function* () {
+      const result = yield* ServerEnvironmentLabel.resolveServerEnvironmentLabel({
+        cwdBaseName: "t3code",
+      }).pipe(
+        Effect.provide(
+          withHostPlatform(TestLayer, "win32", "macbook-pro", {
+            T3CODE_ENVIRONMENT_LABEL: "",
+          }),
+        ),
+      );
+
+      expect(result).toBe("macbook-pro");
+    }),
+  );
+
+  it.effect("keeps the host chain when T3CODE_ENVIRONMENT_LABEL is unset", () =>
+    Effect.gen(function* () {
+      const result = yield* ServerEnvironmentLabel.resolveServerEnvironmentLabel({
+        cwdBaseName: "t3code",
+      }).pipe(Effect.provide(withHostPlatform(TestLayer, "win32", "macbook-pro", {})));
 
       expect(result).toBe("macbook-pro");
     }),
