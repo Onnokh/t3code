@@ -155,3 +155,47 @@ export const readPersistedServerRuntimeState = (path: string) =>
         ),
     }),
   );
+
+/**
+ * Two runtime states describe the same server boot. `pid` alone does not
+ * identify one: every containerized server runs as pid 1, so a stopping
+ * container and the container that replaced it agree on the pid while sharing
+ * nothing else.
+ */
+const isSameServerBoot = (
+  a: PersistedServerRuntimeState,
+  b: PersistedServerRuntimeState,
+): boolean => a.pid === b.pid && a.startedAt === b.startedAt;
+
+/**
+ * Clears the state file only while it still describes the boot that wrote it.
+ *
+ * A deployment shares the state directory between a stopping server and the
+ * server that replaced it: a rolling deploy starts the new container, waits for
+ * its healthcheck, and stops the old one afterwards. An unconditional remove on
+ * shutdown therefore deletes the file the live server just wrote, which leaves
+ * a healthy server undiscoverable and logs nothing, because the remove
+ * succeeded.
+ */
+export const clearOwnedServerRuntimeState = (input: {
+  readonly path: string;
+  readonly owned: PersistedServerRuntimeState;
+}) =>
+  Effect.gen(function* () {
+    const current = yield* readPersistedServerRuntimeState(input.path);
+    if (Option.isNone(current)) {
+      return;
+    }
+    if (!isSameServerBoot(current.value, input.owned)) {
+      yield* Effect.logDebug("Kept server runtime state written by another server").pipe(
+        Effect.annotateLogs({
+          statePath: input.path,
+          ownedStartedAt: input.owned.startedAt,
+          foundStartedAt: current.value.startedAt,
+        }),
+      );
+      return;
+    }
+
+    yield* clearPersistedServerRuntimeState(input.path);
+  });

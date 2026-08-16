@@ -183,4 +183,71 @@ describe("serverRuntimeState", () => {
       }
     }).pipe(Effect.provide(NodeServices.layer)),
   );
+
+  describe("clearOwnedServerRuntimeState", () => {
+    const bootState = (
+      overrides: Partial<ServerRuntimeState.PersistedServerRuntimeState> = {},
+    ): ServerRuntimeState.PersistedServerRuntimeState => ({
+      version: 1,
+      pid: 1,
+      port: 3_773,
+      origin: "http://127.0.0.1:3773",
+      startedAt: "2026-08-16T14:59:37.000Z",
+      ...overrides,
+    });
+
+    const withStatePath = <A, E, R>(use: (statePath: string) => Effect.Effect<A, E, R>) =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-server-runtime-state-test-",
+        });
+        return yield* use(path.join(root, "userdata", "server-runtime.json"));
+      });
+
+    it.effect("clears the state it wrote", () =>
+      withStatePath((statePath) =>
+        Effect.gen(function* () {
+          const owned = bootState();
+          yield* ServerRuntimeState.persistServerRuntimeState({ path: statePath, state: owned });
+
+          yield* ServerRuntimeState.clearOwnedServerRuntimeState({ path: statePath, owned });
+
+          const remaining = yield* ServerRuntimeState.readPersistedServerRuntimeState(statePath);
+          assert.isTrue(Option.isNone(remaining));
+        }),
+      ).pipe(Effect.provide(NodeServices.layer)),
+    );
+
+    // The rolling-deploy race: the replacement container overwrites the file
+    // while the old container is still shutting down. Both run as pid 1, so
+    // only `startedAt` separates them.
+    it.effect("keeps state a replacement server wrote under the same pid", () =>
+      withStatePath((statePath) =>
+        Effect.gen(function* () {
+          const owned = bootState();
+          const replacement = bootState({ startedAt: "2026-08-16T15:04:11.000Z" });
+          yield* ServerRuntimeState.persistServerRuntimeState({
+            path: statePath,
+            state: replacement,
+          });
+
+          yield* ServerRuntimeState.clearOwnedServerRuntimeState({ path: statePath, owned });
+
+          const remaining = yield* ServerRuntimeState.readPersistedServerRuntimeState(statePath);
+          assert.deepEqual(Option.getOrThrow(remaining), replacement);
+        }),
+      ).pipe(Effect.provide(NodeServices.layer)),
+    );
+
+    it.effect("succeeds when the state file is already gone", () =>
+      withStatePath((statePath) =>
+        ServerRuntimeState.clearOwnedServerRuntimeState({
+          path: statePath,
+          owned: bootState(),
+        }),
+      ).pipe(Effect.provide(NodeServices.layer)),
+    );
+  });
 });

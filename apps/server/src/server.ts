@@ -110,7 +110,7 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import {
-  clearPersistedServerRuntimeState,
+  clearOwnedServerRuntimeState,
   makePersistedServerRuntimeState,
   persistServerRuntimeState,
 } from "./serverRuntimeState.ts";
@@ -500,28 +500,38 @@ export const makeServerLayer = Layer.unwrap(
           const server = yield* HttpServer.HttpServer;
           const address = server.address;
           if (typeof address === "string" || !("port" in address)) {
-            return;
+            return undefined;
           }
 
           const state = yield* makePersistedServerRuntimeState({
             config,
             port: address.port,
           });
-          yield* persistServerRuntimeState({
+          // Shutdown clears the file only when it still holds this state, so a
+          // failed persist must not hand the finalizer something to match on.
+          return yield* persistServerRuntimeState({
             path: config.serverRuntimeStatePath,
             state,
           }).pipe(
+            Effect.as(state),
             Effect.catchCause((cause) =>
-              Effect.logWarning("Failed to persist server runtime state", { cause }),
+              Effect.logWarning("Failed to persist server runtime state", { cause }).pipe(
+                Effect.as(undefined),
+              ),
             ),
           );
         }),
-        () =>
-          clearPersistedServerRuntimeState(config.serverRuntimeStatePath).pipe(
-            Effect.catchCause((cause) =>
-              Effect.logWarning("Failed to clear server runtime state", { cause }),
-            ),
-          ),
+        (owned) =>
+          owned === undefined
+            ? Effect.void
+            : clearOwnedServerRuntimeState({
+                path: config.serverRuntimeStatePath,
+                owned,
+              }).pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("Failed to clear server runtime state", { cause }),
+                ),
+              ),
       ),
     );
     const tailscaleServeLayer = config.tailscaleServeEnabled
