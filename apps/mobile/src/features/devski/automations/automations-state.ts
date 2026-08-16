@@ -232,7 +232,18 @@ export function readModels(body: unknown): ModelCatalog | null {
   ) {
     return null;
   }
-  return candidate as ModelCatalog;
+  // A server may offer one model id more than once — the same model
+  // reached through two providers, for instance. The id is what a Job
+  // stores and what the picker identifies a choice by, so a repeat is
+  // unselectable anyway: it would render a row that can never be told
+  // apart from the first. The first wins.
+  const seen = new Set<string>();
+  const models = (candidate.models as readonly ModelChoice[]).filter((model) => {
+    if (seen.has(model.id)) return false;
+    seen.add(model.id);
+    return true;
+  });
+  return { ...(candidate as ModelCatalog), models };
 }
 
 export function readSecretReferenceNames(body: unknown): string[] | null {
