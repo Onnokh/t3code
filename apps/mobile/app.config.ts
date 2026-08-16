@@ -16,7 +16,9 @@ const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
 const isIosPersonalTeamBuild = repoEnv.DEVSKI_IOS_PERSONAL_TEAM === "1";
 
 const personalTeamBundleIdentifier = repoEnv.DEVSKI_IOS_PERSONAL_TEAM_BUNDLE_ID?.trim();
+const personalTeamAppleTeamId = repoEnv.DEVSKI_IOS_PERSONAL_TEAM_ID?.trim();
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
+const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/;
 
 const fromRepoRoot = (relativePath: string) => `../../${relativePath}`;
 
@@ -29,6 +31,24 @@ if (
     "DEVSKI_IOS_PERSONAL_TEAM_BUNDLE_ID must be a reverse-DNS identifier such as dev.onkie.devski when DEVSKI_IOS_PERSONAL_TEAM=1.",
   );
 }
+
+if (
+  isIosPersonalTeamBuild &&
+  personalTeamAppleTeamId !== undefined &&
+  !APPLE_TEAM_ID_PATTERN.test(personalTeamAppleTeamId)
+) {
+  throw new Error(
+    "DEVSKI_IOS_PERSONAL_TEAM_ID must be a ten-character Apple team identifier such as 5Q5AZ5596L.",
+  );
+}
+
+// A Personal Team owns its own bundle identifiers, so that reduced-capability
+// build may sign with its own team. Every other build signs with the single
+// team in the Devski identity manifest.
+const appleTeamId =
+  isIosPersonalTeamBuild && personalTeamAppleTeamId
+    ? personalTeamAppleTeamId
+    : DEVSKI_IDENTITY.appleTeamId;
 
 const DEVELOPMENT_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIosIconPng),
@@ -172,7 +192,7 @@ const config: ExpoConfig = {
     // showcase capture build requires full screen (see infoPlist below).
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
-    appleTeamId: DEVSKI_IDENTITY.appleTeamId,
+    appleTeamId,
     associatedDomains: [...DEVSKI_IDENTITY.associatedDomains],
     infoPlist: {
       NSAppTransportSecurity: {
@@ -215,6 +235,13 @@ const config: ExpoConfig = {
     favicon: variant.assets.appIcon,
   },
   plugins: [
+    // Must be listed FIRST: same-type mods run last-registered-first, so the
+    // first entry's xcodeproj mod runs after every other one — including the
+    // mods that create the share and widget extension targets. Only then can
+    // this plugin stamp ios.appleTeamId onto every signable target. A target
+    // without a team makes expo run:ios re-sign the whole project with a
+    // keychain team (PLO-409).
+    "./plugins/withIosDevelopmentTeam.cjs",
     "expo-asset",
     [
       "expo-font",
