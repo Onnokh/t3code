@@ -1,6 +1,6 @@
 import { useEffect, type ComponentProps } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { createStaticNavigation } from "@react-navigation/native";
+import { createStaticNavigation, getFocusedRouteNameFromRoute } from "@react-navigation/native";
 import {
   createNativeBottomTabNavigator,
   createNativeBottomTabScreen,
@@ -14,6 +14,7 @@ import { RootStack } from "../../Stack";
 import { useEnvironments } from "../../state/environments";
 import { ConnectionsNewRouteScreen } from "../connection/ConnectionsNewRouteScreen";
 import { useConnectionController } from "../connection/useConnectionController";
+import { codeTabBarDisplay } from "./devski-shell-chrome";
 import { AutomationJobDetailScreen } from "./automations/AutomationJobDetailScreen";
 import { AutomationJobEditorScreen } from "./automations/AutomationJobEditorScreen";
 import { AutomationRunDetailScreen } from "./automations/AutomationRunDetailScreen";
@@ -90,10 +91,13 @@ const DevskiTabs = createNativeBottomTabNavigator({
   screens: {
     Code: createNativeBottomTabScreen({
       screen: RootStack,
-      options: {
+      // T3 owns the bottom edge on the routes it pushes full-screen, so the
+      // tab bar steps aside there instead of sitting under their composers.
+      options: ({ route }) => ({
         title: "Code",
         tabBarIcon: { type: "sfSymbol", name: "chevron.left.forwardslash.chevron.right" },
-      },
+        tabBarStyle: { display: codeTabBarDisplay(getFocusedRouteNameFromRoute(route)) },
+      }),
     }),
     SEO: createNativeBottomTabScreen({
       screen: SeoStack,

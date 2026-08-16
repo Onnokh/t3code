@@ -33,6 +33,10 @@ import { scopedProjectKey } from "../../lib/scopedEntities";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { useThreadSearch } from "../../state/queries";
+import {
+  HOME_EMITS_BOTTOM_TOOLBAR,
+  TAB_BAR_CONTENT_CLEARANCE,
+} from "../devski/devski-shell-chrome";
 import { useThreadListV2Enabled } from "../threads/use-thread-list-v2-enabled";
 import { environmentServerConfigsAtom } from "../../state/server";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
@@ -215,10 +219,13 @@ export function HomeScreen(props: HomeScreenProps) {
   const listRef = useRef<LegendListRef | null>(null);
   const insets = useSafeAreaInsets();
   const accentColor = useThemeColor("--color-icon-muted");
-  const iosBottomToolbarClearance =
-    Platform.OS === "ios" && !NATIVE_LIQUID_GLASS_SUPPORTED
+  // Clearance for whatever floats over the bottom edge: upstream's own
+  // pre-glass toolbar, or the tab bar that stands in for it in the shell.
+  const iosBottomToolbarClearance = HOME_EMITS_BOTTOM_TOOLBAR
+    ? Platform.OS === "ios" && !NATIVE_LIQUID_GLASS_SUPPORTED
       ? PRE_LIQUID_GLASS_BOTTOM_TOOLBAR_HEIGHT
-      : 0;
+      : 0
+    : TAB_BAR_CONTENT_CLEARANCE;
   const searchEnvironmentIds = useMemo(
     () =>
       props.selectedEnvironmentId === null
