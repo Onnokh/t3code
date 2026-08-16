@@ -1,6 +1,6 @@
 import { useEffect, type ComponentProps } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { createStaticNavigation } from "@react-navigation/native";
+import { createStaticNavigation, getFocusedRouteNameFromRoute } from "@react-navigation/native";
 import {
   createNativeBottomTabNavigator,
   createNativeBottomTabScreen,
@@ -10,11 +10,12 @@ import {
   createNativeStackScreen,
 } from "@react-navigation/native-stack";
 
-import { RootStack } from "../../Stack";
+import { GLASS_HEADER_OPTIONS, RootStack } from "../../Stack";
+import { getDevskiBrandHeaderOptions } from "./DevskiBrandTitle";
 import { useEnvironments } from "../../state/environments";
 import { ConnectionsNewRouteScreen } from "../connection/ConnectionsNewRouteScreen";
 import { useConnectionController } from "../connection/useConnectionController";
-import { DevicesScreen } from "./devices/DevicesScreen";
+import { codeTabBarDisplay } from "./devski-shell-chrome";
 import { AutomationJobDetailScreen } from "./automations/AutomationJobDetailScreen";
 import { AutomationJobEditorScreen } from "./automations/AutomationJobEditorScreen";
 import { AutomationRunDetailScreen } from "./automations/AutomationRunDetailScreen";
@@ -28,10 +29,11 @@ import { SeoQueriesScreen } from "./seo/SeoQueriesScreen";
 import { SeoRegistryScreen } from "./seo/SeoRegistryScreen";
 
 const SeoStack = createNativeStackNavigator({
+  screenOptions: GLASS_HEADER_OPTIONS,
   screens: {
     SeoHome: createNativeStackScreen({
       screen: SeoHomeScreen,
-      options: { title: "SEO" },
+      options: getDevskiBrandHeaderOptions("SEO"),
     }),
     SeoOpportunities: createNativeStackScreen({
       screen: SeoOpportunitiesScreen,
@@ -61,10 +63,11 @@ const SeoStack = createNativeStackNavigator({
 });
 
 const AutomationsStack = createNativeStackNavigator({
+  screenOptions: GLASS_HEADER_OPTIONS,
   screens: {
     AutomationsHome: createNativeStackScreen({
       screen: AutomationsJobsScreen,
-      options: { title: "Automations" },
+      options: getDevskiBrandHeaderOptions("Automations"),
     }),
     AutomationJob: createNativeStackScreen({
       screen: AutomationJobDetailScreen,
@@ -85,27 +88,19 @@ const AutomationsStack = createNativeStackNavigator({
   },
 });
 
-// Paired Device management (PLO-421). T3's own Settings stack stays
-// untouched inside the Code tab; the plain Devices screen is Devski-owned.
-const DevicesStack = createNativeStackNavigator({
-  screens: {
-    DevicesHome: createNativeStackScreen({
-      screen: DevicesScreen,
-      options: { title: "Devices" },
-    }),
-  },
-});
-
 const DevskiTabs = createNativeBottomTabNavigator({
   initialRouteName: "Code",
   screenOptions: { headerShown: false },
   screens: {
     Code: createNativeBottomTabScreen({
       screen: RootStack,
-      options: {
+      // T3 owns the bottom edge on the routes it pushes full-screen, so the
+      // tab bar steps aside there instead of sitting under their composers.
+      options: ({ route }) => ({
         title: "Code",
         tabBarIcon: { type: "sfSymbol", name: "chevron.left.forwardslash.chevron.right" },
-      },
+        tabBarStyle: { display: codeTabBarDisplay(getFocusedRouteNameFromRoute(route)) },
+      }),
     }),
     SEO: createNativeBottomTabScreen({
       screen: SeoStack,
@@ -122,13 +117,6 @@ const DevskiTabs = createNativeBottomTabNavigator({
           type: "sfSymbol",
           name: "clock.arrow.trianglehead.counterclockwise.rotate.90",
         },
-      },
-    }),
-    Devices: createNativeBottomTabScreen({
-      screen: DevicesStack,
-      options: {
-        title: "Devices",
-        tabBarIcon: { type: "sfSymbol", name: "iphone" },
       },
     }),
   },

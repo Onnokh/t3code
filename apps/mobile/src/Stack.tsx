@@ -15,10 +15,11 @@ import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native"
 import { useResolveClassNames } from "uniwind";
 
 import { AppText as Text } from "./components/AppText";
-import { getCompactBrandHeaderOptions } from "./components/CompactBrandTitle";
+import { getDevskiBrandHeaderOptions } from "./features/devski/DevskiBrandTitle";
 import { ArchivedThreadsRouteScreen } from "./features/archive/ArchivedThreadsRouteScreen";
 import { useAgentNotificationNavigation } from "./features/agent-awareness/notificationNavigation";
 import { ConnectOnboardingRouteScreen } from "./features/cloud/ConnectOnboardingRouteScreen";
+import { DevicesScreen } from "./features/devski/devices/DevicesScreen";
 import { useConnectOnboardingNavigation } from "./features/cloud/connectOnboardingNavigation";
 import { ThreadFilesTreeScreen, ThreadFileScreen } from "./features/files/ThreadFilesRouteScreen";
 import { AdaptiveWorkspaceLayout } from "./features/layout/AdaptiveWorkspaceLayout";
@@ -86,7 +87,9 @@ type AppScreenOptions = NativeStackNavigationOptions & {
 // GLASS: transparent header over the screen's primary scroll view on supported
 // iOS versions. Pre-glass iOS gets the same solid material as internal-scroll
 // surfaces so content is laid out below the bar instead of underlapping it.
-const GLASS_HEADER_OPTIONS: AppScreenOptions = {
+// Exported for the Devski shell, so the SEO and Automations Areas wear the
+// same navigation bar as the Code Area instead of a plain solid one.
+export const GLASS_HEADER_OPTIONS: AppScreenOptions = {
   headerBackButtonDisplayMode: "minimal",
   headerBackTitle: "",
   headerLargeTitle: false,
@@ -154,6 +157,15 @@ const SettingsContentStack = createNativeStackNavigator({
       linking: "environments",
       options: {
         title: "Environments",
+      },
+    }),
+    // Devski fork (PLO-421): Paired Devices sit beside Environments here rather
+    // than in a fourth tab, so the shell keeps one settings surface.
+    SettingsDevices: createNativeStackScreen({
+      screen: DevicesScreen,
+      linking: "devices",
+      options: {
+        title: "Devices",
       },
     }),
     SettingsEnvironmentNew: createNativeStackScreen({
@@ -457,7 +469,7 @@ export const RootStack = createNativeStackNavigator({
         ...GLASS_HEADER_OPTIONS,
         contentStyle: { backgroundColor: "transparent" },
         headerBackVisible: false,
-        ...getCompactBrandHeaderOptions(),
+        ...getDevskiBrandHeaderOptions("Threads"),
       },
     }),
     Thread: createNativeStackScreen({

@@ -13,6 +13,7 @@ import { T3Wordmark } from "../../components/T3Wordmark";
 import { HOME_HORIZONTAL_INSET } from "../../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../../lib/mobileBranding";
 import { useThemeColor } from "../../lib/useThemeColor";
+import { HOME_EMITS_BOTTOM_TOOLBAR } from "../devski/devski-shell-chrome";
 import { useThreadListV2Enabled } from "../threads/use-thread-list-v2-enabled";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
@@ -317,6 +318,10 @@ function IosHomeHeader(props: HomeHeaderProps) {
     ...props,
     listOrganization: !threadListV2Enabled,
   });
+  // The Mail-style toolbar owns the bottom edge, which a tabbed shell does
+  // not have to spare. Without it, search moves into the navigation bar and
+  // compose and filter join the header items beside settings.
+  const usesMailSearchToolbar = NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED && HOME_EMITS_BOTTOM_TOOLBAR;
 
   return (
     <>
@@ -329,6 +334,31 @@ function IosHomeHeader(props: HomeHeaderProps) {
           unstable_headerRightItems:
             Platform.OS === "ios"
               ? () => [
+                  ...(HOME_EMITS_BOTTOM_TOOLBAR
+                    ? []
+                    : [
+                        withNativeGlassHeaderItem({
+                          accessibilityLabel: "Filter and sort threads",
+                          icon: {
+                            name: hasCustomListOptions
+                              ? "line.3.horizontal.decrease.circle.fill"
+                              : "line.3.horizontal.decrease.circle",
+                            type: "sfSymbol",
+                          } as const,
+                          identifier: "home-filter",
+                          label: "",
+                          menu: filterMenu,
+                          type: "menu",
+                        }),
+                        withNativeGlassHeaderItem({
+                          accessibilityLabel: "New task",
+                          icon: { name: "square.and.pencil", type: "sfSymbol" } as const,
+                          identifier: "home-new-task",
+                          label: "",
+                          onPress: props.onStartNewTask,
+                          type: "button",
+                        }),
+                      ]),
                   withNativeGlassHeaderItem({
                     accessibilityLabel: "Open settings",
                     icon: { name: "ellipsis", type: "sfSymbol" } as const,
@@ -341,7 +371,7 @@ function IosHomeHeader(props: HomeHeaderProps) {
               : undefined,
           // The keys below are set per-branch (not `undefined`) so a later
           // reapply cannot clobber options owned by NativeHeaderToolbar.
-          ...(NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED
+          ...(usesMailSearchToolbar
             ? {
                 unstable_headerToolbarItems: () => [
                   createNativeMailSearchToolbarItem({
@@ -361,12 +391,15 @@ function IosHomeHeader(props: HomeHeaderProps) {
                 ],
               }
             : {
-                // Pre-Liquid-Glass iOS: standard pull-down search in the nav
-                // bar; create + sort live in the plain bottom toolbar below.
+                // Search in the navigation bar: pull-down on pre-glass iOS,
+                // and the iOS 26 integrated search button where that exists.
                 headerSearchBarOptions: {
                   ref: searchBarRef,
                   autoCapitalize: "none" as const,
                   hideNavigationBar: false,
+                  ...(NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED
+                    ? { allowToolbarIntegration: true, placement: "integratedButton" as const }
+                    : null),
                   placeholder: "Search",
                   onCancelButtonPress: () => {
                     props.onSearchQueryChange("");
@@ -379,7 +412,7 @@ function IosHomeHeader(props: HomeHeaderProps) {
         }}
       />
 
-      {NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED ? null : (
+      {usesMailSearchToolbar || !HOME_EMITS_BOTTOM_TOOLBAR ? null : (
         <NativeHeaderToolbar placement="bottom">
           <NativeHeaderToolbar.Menu
             accessibilityLabel="Filter and sort threads"

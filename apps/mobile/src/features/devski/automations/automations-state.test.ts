@@ -9,6 +9,7 @@ import {
   isRunActive,
   readJobs,
   readLog,
+  readModels,
   readRun,
   readTriggerResult,
   splitJobs,
@@ -150,6 +151,25 @@ describe("Automations display helpers", () => {
     expect(isRunActive("running")).toBe(true);
     expect(isRunActive("succeeded")).toBe(false);
     expect(isRunActive("cancelled")).toBe(false);
+  });
+
+  it("keeps one row per model id, so the picker can tell its choices apart", () => {
+    const catalog = readModels({
+      serverVersion: "1.4.0",
+      defaultModel: "opencode-go/deepseek-v4-flash",
+      models: [
+        { id: "openai/gpt-5.4", providerID: "openai", modelID: "gpt-5.4", name: "GPT-5.4" },
+        { id: "openai/gpt-5.4", providerID: "gitlab", modelID: "gpt-5.4", name: "GPT-5.4 (Duo)" },
+        { id: "anthropic/opus-5", providerID: "anthropic", modelID: "opus-5", name: "Opus 5" },
+      ],
+    });
+    expect(catalog?.models.map((model) => model.name)).toEqual(["GPT-5.4", "Opus 5"]);
+    expect(catalog?.defaultModel).toBe("opencode-go/deepseek-v4-flash");
+  });
+
+  it("rejects a catalog without a server version or a model list", () => {
+    expect(readModels({ models: [] })).toBe(null);
+    expect(readModels({ serverVersion: "1.4.0" })).toBe(null);
   });
 
   it("formats Artifact byte lengths", () => {

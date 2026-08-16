@@ -14,7 +14,8 @@ import {
   useArmDevskiActivityForAutomationRun,
   useAutomationNotificationOffer,
 } from "../notifications/automationNotifications";
-import { useAutomationsClient } from "./automations-api";
+import { automationsCacheKeys, useAutomationsClient } from "./automations-api";
+import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
   availableLifecycleActions,
   deleteBlockedByActiveRun,
@@ -33,20 +34,36 @@ import {
   type AutomationsResult,
   type AutomationsStackParamList,
 } from "./automations-state";
-import { CodeBlock, FieldRow, ListRow, PlainButton, SectionTitle } from "./AutomationsUi";
+import { NativeHeaderToolbar } from "../../../native/StackHeader";
+import { CodeBlock, FieldRow, ListRow, SectionTitle } from "./AutomationsUi";
 
 type Params = { readonly jobId: string; readonly name?: string };
+
+type CachedJobDetail = {
+  readonly job: AutomationJob;
+  readonly runs: readonly AutomationRun[];
+};
 
 type LoadState =
   | { readonly kind: "loading" }
   | { readonly kind: "error"; readonly message: string }
-  | {
-      readonly kind: "ready";
-      readonly job: AutomationJob;
-      readonly runs: readonly AutomationRun[];
-    };
+  | ({ readonly kind: "ready" } & CachedJobDetail);
 
 const ACTIVE_POLL_MS = 3_000;
+
+/**
+ * What a header action is doing right now. A navigation-bar control has no
+ * room for a progress label, so the screen says it instead of leaving a
+ * tap unanswered.
+ */
+const LIFECYCLE_PROGRESS: Record<LifecycleAction, string> = {
+  enable: "Enabling automatic Triggers…",
+  disable: "Disabling automatic Triggers…",
+  archive: "Archiving Job…",
+  restore: "Restoring Job…",
+  duplicate: "Duplicating Job…",
+  delete: "Deleting Job…",
+};
 
 function runLines(run: AutomationRun): string[] {
   const lines = [`${run.cause === "manual" ? "Manual" : "Scheduled"} · ${describeRunSummary(run)}`];
@@ -69,7 +86,10 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
   const client = useAutomationsClient();
   const offerNotifications = useAutomationNotificationOffer();
   const armDevskiActivity = useArmDevskiActivityForAutomationRun();
-  const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [state, setState] = useState<LoadState>(() => {
+    const cached = readDevskiCacheEntry<CachedJobDetail>(automationsCacheKeys.job(jobId));
+    return cached === null ? { kind: "loading" } : { kind: "ready", ...cached };
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
@@ -83,7 +103,9 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
       client.listRuns(jobId),
     ]);
     if (jobResult.kind === "ok" && runsResult.kind === "ok") {
-      setState({ kind: "ready", job: jobResult.value, runs: runsResult.value });
+      const detail = { job: jobResult.value, runs: runsResult.value };
+      writeDevskiCacheEntry(automationsCacheKeys.job(jobId), detail);
+      setState({ kind: "ready", ...detail });
     } else {
       setState({
         kind: "error",
@@ -318,158 +340,179 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
     );
   }
 
+  const job = state.kind === "ready" ? state.job : null;
+  const runCount = state.kind === "ready" ? state.runs.length : 0;
+  const busy = triggering || mutating !== null;
+  const busyLabel = triggering ? "Requesting Run…" : mutating ? LIFECYCLE_PROGRESS[mutating] : null;
+  const lifecycle = job ? availableLifecycleActions(job) : [];
+  const deleteBlocked = job ? deleteBlockedByActiveRun(job) : false;
+
   return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      className="flex-1 bg-screen"
-      contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            void load().finally(() => setRefreshing(false));
-          }}
-        />
-      }
-    >
-      {banner ? <ErrorBanner message={banner} /> : null}
-      {state.kind === "loading" ? (
-        <Text className="text-sm text-foreground-muted">Loading Job…</Text>
-      ) : null}
-      {state.kind === "error" ? <ErrorBanner message={state.message} /> : null}
-      {state.kind === "ready" ? (
-        <>
-          <Text className="font-t3-bold text-xl text-foreground">{state.job.name}</Text>
-          <FieldRow label="Job ID" value={state.job.id} />
-          <FieldRow label="Revision" value={String(state.job.revision)} />
-          <FieldRow label="Kind" value={describeWork(state.job.work)} />
-          <FieldRow label="Trigger" value={describeTrigger(state.job.trigger)} />
-          {state.job.nextRunAt ? (
-            <FieldRow label="Next Run" value={new Date(state.job.nextRunAt).toLocaleString()} />
-          ) : null}
-          <FieldRow
-            label="Automatic Triggers"
-            value={state.job.archivedAt ? "Archived" : state.job.enabled ? "Enabled" : "Disabled"}
+    <>
+      {/* Operating a Job belongs in the navigation bar, beside the other
+          Areas' actions, rather than in a wall of buttons the Job's own
+          fields have to be scrolled past. Run Now is the one action worth
+          its own control; the rest live behind the menu. */}
+      {job ? (
+        <NativeHeaderToolbar placement="right">
+          <NativeHeaderToolbar.Button
+            accessibilityLabel="Run Now"
+            icon="play.fill"
+            disabled={busy || Boolean(job.activeRunId) || Boolean(job.archivedAt)}
+            onPress={() => onRunNow(job)}
+            separateBackground
           />
-          <FieldRow label="Timeout" value={`${state.job.timeoutMinutes} min`} />
-          {state.job.repository ? (
-            <FieldRow label="Repository" value={state.job.repository.url} />
-          ) : null}
-          {state.job.work.kind === "agent" && state.job.work.model ? (
-            <FieldRow label="Model" value={state.job.work.model} />
-          ) : null}
-          <FieldRow
-            label="Secret References"
-            value={state.job.secretRefs.length > 0 ? state.job.secretRefs.join(", ") : "None"}
-          />
-          <FieldRow label="Created" value={new Date(state.job.createdAt).toLocaleString()} />
-          <FieldRow label="Updated" value={new Date(state.job.updatedAt).toLocaleString()} />
-          {state.job.archivedAt ? (
-            <FieldRow label="Archived" value={new Date(state.job.archivedAt).toLocaleString()} />
-          ) : null}
-
-          <SectionTitle>{state.job.work.kind === "agent" ? "Prompt" : "Command"}</SectionTitle>
-          <CodeBlock
-            text={state.job.work.kind === "agent" ? state.job.work.prompt : state.job.work.command}
-          />
-
-          <View className="mt-3 gap-2">
-            <PlainButton
-              label="Edit Job"
-              disabled={Boolean(state.job.archivedAt)}
-              onPress={() => navigation.navigate("AutomationJobEditor", { jobId: state.job.id })}
-            />
-            {state.job.activeRunId ? (
-              <PlainButton
-                label="View active Run"
-                onPress={() => openRun(state.job.activeRunId ?? "")}
-              />
+          <NativeHeaderToolbar.Menu
+            accessibilityLabel="Job actions"
+            icon="ellipsis"
+            separateBackground
+          >
+            <NativeHeaderToolbar.MenuAction
+              icon="pencil"
+              disabled={busy || Boolean(job.archivedAt)}
+              onPress={() => navigation.navigate("AutomationJobEditor", { jobId: job.id })}
+            >
+              Edit Job
+            </NativeHeaderToolbar.MenuAction>
+            {job.activeRunId ? (
+              <NativeHeaderToolbar.MenuAction
+                icon="arrow.right.circle"
+                onPress={() => openRun(job.activeRunId ?? "")}
+              >
+                View active Run
+              </NativeHeaderToolbar.MenuAction>
             ) : null}
-            <PlainButton
-              label={triggering ? "Requesting Run…" : "Run Now"}
-              disabled={
-                triggering ||
-                mutating !== null ||
-                Boolean(state.job.activeRunId) ||
-                Boolean(state.job.archivedAt)
-              }
-              onPress={() => onRunNow(state.job)}
-            />
-          </View>
-
-          <SectionTitle>Lifecycle</SectionTitle>
-          {(() => {
-            const actions = availableLifecycleActions(state.job);
-            const busy = mutating !== null || triggering;
-            const deleteBlocked = deleteBlockedByActiveRun(state.job);
-            const job = state.job;
-            const runCount = state.runs.length;
-            return (
-              <View className="gap-2">
-                {actions.includes("enable") ? (
-                  <PlainButton
-                    label={mutating === "enable" ? "Enabling…" : "Enable automatic Triggers"}
-                    disabled={busy}
-                    onPress={() => onToggleTriggers(job)}
-                  />
-                ) : null}
-                {actions.includes("disable") ? (
-                  <PlainButton
-                    label={mutating === "disable" ? "Disabling…" : "Disable automatic Triggers"}
-                    disabled={busy}
-                    onPress={() => onToggleTriggers(job)}
-                  />
-                ) : null}
-                {actions.includes("archive") ? (
-                  <PlainButton
-                    label={mutating === "archive" ? "Archiving…" : "Archive Job"}
-                    disabled={busy}
-                    onPress={() => onArchive(job)}
-                  />
-                ) : null}
-                {actions.includes("restore") ? (
-                  <PlainButton
-                    label={mutating === "restore" ? "Restoring…" : "Restore Job"}
-                    disabled={busy}
-                    onPress={() => onRestore(job)}
-                  />
-                ) : null}
-                <PlainButton
-                  label={mutating === "duplicate" ? "Duplicating…" : "Duplicate Job"}
-                  disabled={busy}
-                  onPress={() => onDuplicate(job)}
-                />
-                <PlainButton
-                  label={mutating === "delete" ? "Deleting…" : "Delete Job permanently"}
-                  destructive
-                  disabled={busy || deleteBlocked}
-                  onPress={() => onDelete(job, runCount)}
-                />
-                {deleteBlocked ? (
-                  <Text className="text-xs text-foreground-muted">
-                    Permanent deletion waits until no Run is active. Stop the active Run first.
-                  </Text>
-                ) : null}
-              </View>
-            );
-          })()}
-
-          <SectionTitle>Run history</SectionTitle>
-          {state.runs.length === 0 ? (
-            <Text className="text-sm text-foreground-muted">This Job never ran.</Text>
-          ) : (
-            state.runs.map((run) => (
-              <ListRow
-                key={run.id}
-                title={`Run ${run.id.slice(0, 8)}${isRunActive(run.state) ? " (active)" : ""}`}
-                lines={runLines(run)}
-                onPress={() => openRun(run.id)}
-              />
-            ))
-          )}
-        </>
+            {lifecycle.includes("enable") ? (
+              <NativeHeaderToolbar.MenuAction
+                icon="play.circle"
+                disabled={busy}
+                onPress={() => onToggleTriggers(job)}
+              >
+                Enable automatic Triggers
+              </NativeHeaderToolbar.MenuAction>
+            ) : null}
+            {lifecycle.includes("disable") ? (
+              <NativeHeaderToolbar.MenuAction
+                icon="pause.circle"
+                disabled={busy}
+                onPress={() => onToggleTriggers(job)}
+              >
+                Disable automatic Triggers
+              </NativeHeaderToolbar.MenuAction>
+            ) : null}
+            {lifecycle.includes("archive") ? (
+              <NativeHeaderToolbar.MenuAction
+                icon="archivebox"
+                disabled={busy}
+                onPress={() => onArchive(job)}
+              >
+                Archive Job
+              </NativeHeaderToolbar.MenuAction>
+            ) : null}
+            {lifecycle.includes("restore") ? (
+              <NativeHeaderToolbar.MenuAction
+                icon="arrow.uturn.backward"
+                disabled={busy}
+                onPress={() => onRestore(job)}
+              >
+                Restore Job
+              </NativeHeaderToolbar.MenuAction>
+            ) : null}
+            <NativeHeaderToolbar.MenuAction
+              icon="doc.on.doc"
+              disabled={busy}
+              onPress={() => onDuplicate(job)}
+            >
+              Duplicate Job
+            </NativeHeaderToolbar.MenuAction>
+            <NativeHeaderToolbar.MenuAction
+              destructive
+              icon="trash"
+              disabled={busy || deleteBlocked}
+              // The blocked case explains itself here, since the Lifecycle
+              // section that used to carry the reason is gone.
+              subtitle={deleteBlocked ? "Stop the active Run first." : undefined}
+              onPress={() => onDelete(job, runCount)}
+            >
+              Delete Job permanently
+            </NativeHeaderToolbar.MenuAction>
+          </NativeHeaderToolbar.Menu>
+        </NativeHeaderToolbar>
       ) : null}
-    </ScrollView>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        className="flex-1 bg-screen"
+        contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void load().finally(() => setRefreshing(false));
+            }}
+          />
+        }
+      >
+        {banner ? <ErrorBanner message={banner} /> : null}
+        {busyLabel ? <Text className="text-sm text-foreground-muted">{busyLabel}</Text> : null}
+        {state.kind === "loading" ? (
+          <Text className="text-sm text-foreground-muted">Loading Job…</Text>
+        ) : null}
+        {state.kind === "error" ? <ErrorBanner message={state.message} /> : null}
+        {state.kind === "ready" ? (
+          <>
+            <Text className="font-t3-bold text-xl text-foreground">{state.job.name}</Text>
+            <FieldRow label="Job ID" value={state.job.id} />
+            <FieldRow label="Revision" value={String(state.job.revision)} />
+            <FieldRow label="Kind" value={describeWork(state.job.work)} />
+            <FieldRow label="Trigger" value={describeTrigger(state.job.trigger)} />
+            {state.job.nextRunAt ? (
+              <FieldRow label="Next Run" value={new Date(state.job.nextRunAt).toLocaleString()} />
+            ) : null}
+            <FieldRow
+              label="Automatic Triggers"
+              value={state.job.archivedAt ? "Archived" : state.job.enabled ? "Enabled" : "Disabled"}
+            />
+            <FieldRow label="Timeout" value={`${state.job.timeoutMinutes} min`} />
+            {state.job.repository ? (
+              <FieldRow label="Repository" value={state.job.repository.url} />
+            ) : null}
+            {state.job.work.kind === "agent" && state.job.work.model ? (
+              <FieldRow label="Model" value={state.job.work.model} />
+            ) : null}
+            <FieldRow
+              label="Secret References"
+              value={state.job.secretRefs.length > 0 ? state.job.secretRefs.join(", ") : "None"}
+            />
+            <FieldRow label="Created" value={new Date(state.job.createdAt).toLocaleString()} />
+            <FieldRow label="Updated" value={new Date(state.job.updatedAt).toLocaleString()} />
+            {state.job.archivedAt ? (
+              <FieldRow label="Archived" value={new Date(state.job.archivedAt).toLocaleString()} />
+            ) : null}
+
+            <SectionTitle>{state.job.work.kind === "agent" ? "Prompt" : "Command"}</SectionTitle>
+            <CodeBlock
+              text={
+                state.job.work.kind === "agent" ? state.job.work.prompt : state.job.work.command
+              }
+            />
+
+            <SectionTitle>Run history</SectionTitle>
+            {state.runs.length === 0 ? (
+              <Text className="text-sm text-foreground-muted">This Job never ran.</Text>
+            ) : (
+              state.runs.map((run) => (
+                <ListRow
+                  key={run.id}
+                  title={`Run ${run.id.slice(0, 8)}${isRunActive(run.state) ? " (active)" : ""}`}
+                  lines={runLines(run)}
+                  onPress={() => openRun(run.id)}
+                />
+              ))
+            )}
+          </>
+        ) : null}
+      </ScrollView>
+    </>
   );
 }

@@ -24,7 +24,10 @@ export function SeoHistoryScreen() {
     () => (client && selectedSiteId ? () => client.history(selectedSiteId, HISTORY_DAYS) : null),
     [client, selectedSiteId],
   );
-  const { read, reload } = useSeoRead(fetcher);
+  const { read, reload } = useSeoRead(
+    selectedSiteId ? `history:${selectedSiteId}:${HISTORY_DAYS}` : null,
+    fetcher,
+  );
   const envelope = displayableEnvelope(read);
 
   if (!client || !selectedSiteId) {

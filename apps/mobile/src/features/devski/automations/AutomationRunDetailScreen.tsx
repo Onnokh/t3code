@@ -6,7 +6,8 @@ import { AppText as Text } from "../../../components/AppText";
 import { ErrorBanner } from "../../../components/ErrorBanner";
 import { uuidv4 } from "../../../lib/uuid";
 import { useAutomationNotificationOffer } from "../notifications/automationNotifications";
-import { useAutomationsClient } from "./automations-api";
+import { automationsCacheKeys, useAutomationsClient } from "./automations-api";
+import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
   describeRunState,
   formatByteLength,
@@ -15,6 +16,7 @@ import {
   type ArtifactSummary,
   type AutomationRun,
 } from "./automations-state";
+import { NativeHeaderToolbar } from "../../../native/StackHeader";
 import { CodeBlock, FieldRow, ListRow, PlainButton, SectionTitle } from "./AutomationsUi";
 
 type Params = { readonly runId: string };
@@ -46,12 +48,19 @@ const EMPTY_LOG: LogFollow = {
 export function AutomationRunDetailScreen({ route }: StaticScreenProps<Params>) {
   const { runId } = route.params;
   const client = useAutomationsClient();
-  const [run, setRun] = useState<AutomationRun | null>(null);
+  // The Run itself hydrates; the log does not. A log is followed by cursor
+  // from wherever this screen starts, so replaying a cached prefix would
+  // either duplicate lines or hide the ones written since.
+  const [run, setRun] = useState<AutomationRun | null>(() =>
+    readDevskiCacheEntry<AutomationRun>(automationsCacheKeys.run(runId)),
+  );
   const [error, setError] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [log, setLog] = useState<LogFollow>(EMPTY_LOG);
-  const [artifacts, setArtifacts] = useState<readonly ArtifactSummary[]>([]);
+  const [artifacts, setArtifacts] = useState<readonly ArtifactSummary[]>(
+    () => readDevskiCacheEntry<AutomationRun>(automationsCacheKeys.run(runId))?.artifacts ?? [],
+  );
   const [stopping, setStopping] = useState(false);
   const stopKey = useRef<string | null>(null);
   const logBusy = useRef(false);
@@ -61,6 +70,7 @@ export function AutomationRunDetailScreen({ route }: StaticScreenProps<Params>) 
     if (!client) return;
     const result = await client.getRun(runId);
     if (result.kind === "ok") {
+      writeDevskiCacheEntry(automationsCacheKeys.run(runId), result.value);
       setRun(result.value);
       setError(null);
       if (result.value.artifacts) setArtifacts(result.value.artifacts);
@@ -203,102 +213,110 @@ export function AutomationRunDetailScreen({ route }: StaticScreenProps<Params>) 
   }
 
   return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      className="flex-1 bg-screen"
-      contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            void loadAll().finally(() => setRefreshing(false));
-          }}
-        />
-      }
-    >
-      {banner ? <ErrorBanner message={banner} /> : null}
-      {error ? <ErrorBanner message={error} /> : null}
-      {run === null && !error ? (
-        <Text className="text-sm text-foreground-muted">Loading Run…</Text>
-      ) : null}
-      {run ? (
-        <>
-          <Text className="font-t3-bold text-xl text-foreground">
-            {run.job} · {describeRunState(run.state)}
-          </Text>
-          <FieldRow label="Run ID" value={run.id} />
-          <FieldRow
-            label="Cause"
-            value={run.cause === "manual" ? "Manual Trigger" : "Scheduled Trigger"}
+    <>
+      {/* Stopping is this screen's one operation, so it sits in the
+          navigation bar with the Job's actions rather than between the
+          Run's fields and its log. */}
+      {run && isRunActive(run.state) ? (
+        <NativeHeaderToolbar placement="right">
+          <NativeHeaderToolbar.Button
+            accessibilityLabel="Stop Run"
+            icon="stop.fill"
+            disabled={stopping}
+            onPress={onStop}
+            separateBackground
           />
-          <FieldRow label="Requested" value={new Date(run.requestedAt).toLocaleString()} />
-          {run.startedAt ? (
-            <FieldRow label="Started" value={new Date(run.startedAt).toLocaleString()} />
-          ) : null}
-          {run.finishedAt ? (
-            <FieldRow label="Finished" value={new Date(run.finishedAt).toLocaleString()} />
-          ) : null}
-          {run.durationMs !== undefined ? (
-            <FieldRow label="Duration" value={`${Math.round(run.durationMs / 1000)}s`} />
-          ) : null}
-          {run.exitCode !== undefined ? (
-            <FieldRow label="Exit code" value={String(run.exitCode)} />
-          ) : null}
-          {run.errorSummary ? <FieldRow label="Error" value={run.errorSummary} /> : null}
-
-          {isRunActive(run.state) ? (
-            <View className="mt-2">
-              <PlainButton
-                destructive
-                label={stopping ? "Stopping…" : "Stop Run"}
-                disabled={stopping}
-                onPress={onStop}
-              />
-            </View>
-          ) : null}
-
-          <SectionTitle>Log</SectionTitle>
-          {log.trimmed ? (
-            <Text className="text-sm text-foreground-muted">
-              Older log output is hidden on this device.
-            </Text>
-          ) : null}
-          {log.truncated ? (
-            <Text className="text-sm text-foreground-muted">
-              The server truncated this log at its retention limit.
-            </Text>
-          ) : null}
-          {log.text.length > 0 ? (
-            <CodeBlock text={log.text} />
-          ) : (
-            <Text className="text-sm text-foreground-muted">
-              {isRunActive(run.state) ? "Waiting for log output…" : "No log output is available."}
-            </Text>
-          )}
-          {!log.complete && log.cursor && !isRunActive(run.state) ? (
-            <PlainButton label="Load more log output" onPress={() => void followLog()} />
-          ) : null}
-
-          <SectionTitle>Artifacts</SectionTitle>
-          {artifacts.length === 0 ? (
-            <Text className="text-sm text-foreground-muted">This Run declared no Artifacts.</Text>
-          ) : (
-            artifacts.map((artifact) => (
-              <ListRow
-                key={artifact.id}
-                title={artifact.name}
-                lines={[
-                  `${artifact.mediaType} · ${formatByteLength(artifact.byteLength)}`,
-                  `Created ${new Date(artifact.createdAt).toLocaleString()}`,
-                  "Tap to download and share.",
-                ]}
-                onPress={() => void downloadArtifact(artifact)}
-              />
-            ))
-          )}
-        </>
+        </NativeHeaderToolbar>
       ) : null}
-    </ScrollView>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        className="flex-1 bg-screen"
+        contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void loadAll().finally(() => setRefreshing(false));
+            }}
+          />
+        }
+      >
+        {banner ? <ErrorBanner message={banner} /> : null}
+        {stopping ? (
+          <Text className="text-sm text-foreground-muted">Stopping this Run…</Text>
+        ) : null}
+        {error ? <ErrorBanner message={error} /> : null}
+        {run === null && !error ? (
+          <Text className="text-sm text-foreground-muted">Loading Run…</Text>
+        ) : null}
+        {run ? (
+          <>
+            <Text className="font-t3-bold text-xl text-foreground">
+              {run.job} · {describeRunState(run.state)}
+            </Text>
+            <FieldRow label="Run ID" value={run.id} />
+            <FieldRow
+              label="Cause"
+              value={run.cause === "manual" ? "Manual Trigger" : "Scheduled Trigger"}
+            />
+            <FieldRow label="Requested" value={new Date(run.requestedAt).toLocaleString()} />
+            {run.startedAt ? (
+              <FieldRow label="Started" value={new Date(run.startedAt).toLocaleString()} />
+            ) : null}
+            {run.finishedAt ? (
+              <FieldRow label="Finished" value={new Date(run.finishedAt).toLocaleString()} />
+            ) : null}
+            {run.durationMs !== undefined ? (
+              <FieldRow label="Duration" value={`${Math.round(run.durationMs / 1000)}s`} />
+            ) : null}
+            {run.exitCode !== undefined ? (
+              <FieldRow label="Exit code" value={String(run.exitCode)} />
+            ) : null}
+            {run.errorSummary ? <FieldRow label="Error" value={run.errorSummary} /> : null}
+
+            <SectionTitle>Log</SectionTitle>
+            {log.trimmed ? (
+              <Text className="text-sm text-foreground-muted">
+                Older log output is hidden on this device.
+              </Text>
+            ) : null}
+            {log.truncated ? (
+              <Text className="text-sm text-foreground-muted">
+                The server truncated this log at its retention limit.
+              </Text>
+            ) : null}
+            {log.text.length > 0 ? (
+              <CodeBlock text={log.text} />
+            ) : (
+              <Text className="text-sm text-foreground-muted">
+                {isRunActive(run.state) ? "Waiting for log output…" : "No log output is available."}
+              </Text>
+            )}
+            {!log.complete && log.cursor && !isRunActive(run.state) ? (
+              <PlainButton label="Load more log output" onPress={() => void followLog()} />
+            ) : null}
+
+            <SectionTitle>Artifacts</SectionTitle>
+            {artifacts.length === 0 ? (
+              <Text className="text-sm text-foreground-muted">This Run declared no Artifacts.</Text>
+            ) : (
+              artifacts.map((artifact) => (
+                <ListRow
+                  key={artifact.id}
+                  title={artifact.name}
+                  lines={[
+                    `${artifact.mediaType} · ${formatByteLength(artifact.byteLength)}`,
+                    `Created ${new Date(artifact.createdAt).toLocaleString()}`,
+                    "Tap to download and share.",
+                  ]}
+                  onPress={() => void downloadArtifact(artifact)}
+                />
+              ))
+            )}
+          </>
+        ) : null}
+      </ScrollView>
+    </>
   );
 }

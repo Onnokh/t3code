@@ -64,7 +64,10 @@ export function SeoOpportunitiesScreen() {
         : null,
     [client, selectedSiteId, kind],
   );
-  const { read, reload } = useSeoRead(fetcher);
+  const { read, reload } = useSeoRead(
+    selectedSiteId ? `opportunities:${selectedSiteId}:${kind ?? "all"}` : null,
+    fetcher,
+  );
   const envelope = displayableEnvelope(read);
 
   if (!client || !selectedSiteId) {

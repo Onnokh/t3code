@@ -54,7 +54,10 @@ export function SeoQueriesScreen() {
         : null,
     [client, selectedSiteId, includeBrand],
   );
-  const { read, reload } = useSeoRead(fetcher);
+  const { read, reload } = useSeoRead(
+    selectedSiteId ? `queries:${selectedSiteId}:${includeBrand ? "brand" : "nonbrand"}` : null,
+    fetcher,
+  );
   const envelope = displayableEnvelope(read);
 
   if (!client || !selectedSiteId) {

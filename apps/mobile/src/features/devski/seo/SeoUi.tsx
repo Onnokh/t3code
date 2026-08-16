@@ -1,4 +1,4 @@
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../../components/AppText";
 import { describeFreshness, displayState, displayableEnvelope, type SeoRead } from "./seo-state";
@@ -50,6 +50,51 @@ export function SeoFreshnessBanner(props: {
           Showing the last successful read; the latest refresh failed.
         </Text>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * The overview's one-line version of the banner: silent while the data is
+ * current, so the screen stays as plain as the design asks, and explicit
+ * the moment what it shows is no longer the latest read.
+ */
+export function SeoStaleNote(props: { readonly read: SeoRead<unknown> }) {
+  const state = displayState(props.read);
+  if (state !== "stale" && state !== "unavailable") return null;
+  if (state === "unavailable") {
+    return (
+      <Text className="text-xs text-foreground-muted">
+        SEO data is unavailable. Pull down to retry the read.
+      </Text>
+    );
+  }
+  const envelope = displayableEnvelope(props.read);
+  const retained = props.read.kind === "unavailable";
+  return (
+    <Text className="text-xs text-foreground-muted">
+      {retained ? "Last successful read · " : ""}
+      {envelope ? describeFreshness(envelope.freshness) : "Stale data"}
+    </Text>
+  );
+}
+
+/** A section title beside the link to the screen that holds all of it. */
+export function SeoSectionHeader(props: {
+  readonly title: string;
+  readonly actionLabel: string;
+  readonly onPress: () => void;
+}) {
+  return (
+    <View className="mt-4 flex-row items-center justify-between gap-3">
+      <Text className="font-t3-bold text-xl text-foreground">{props.title}</Text>
+      <Pressable
+        accessibilityRole="button"
+        onPress={props.onPress}
+        className="rounded-xl border border-border bg-card px-3 py-1.5 active:opacity-70"
+      >
+        <Text className="text-sm text-foreground">{props.actionLabel}</Text>
+      </Pressable>
     </View>
   );
 }
