@@ -36,6 +36,20 @@ ENV XDG_DATA_HOME=/data/opencode/share \
     XDG_STATE_HOME=/data/opencode/state \
     XDG_CACHE_HOME=/var/cache/xdg
 
+# Operator-owned OpenCode configuration, declared in this repository instead
+# of edited inside the running container. It disables the `gitlab` provider:
+# OpenCode finds that provider from the container environment, but this
+# deployment holds no GitLab Duo entitlement, so its models cannot serve a
+# Run. They still filled 23 of the 62 Agent Job model choices and pushed the
+# usable models out of sight in the Job editor.
+#
+# The file MUST stay outside /data/opencode. That path is a volume, and a
+# volume mount masks anything the image puts below it, so a configuration
+# baked into XDG_CONFIG_HOME would never be read at run time. OPENCODE_CONFIG
+# names this copy explicitly.
+COPY infra/devski-code/opencode.json /etc/devski/opencode.json
+ENV OPENCODE_CONFIG=/etc/devski/opencode.json
+
 # /data/opencode: interactive OpenCode 2 state (owner: this container).
 # /workspaces/code: the Code Workspace Root, shared with the T3 environment
 # at the identical absolute path.
