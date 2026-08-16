@@ -1,29 +1,32 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshControl, ScrollView, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useFocusEffect, useNavigation, type NavigationProp } from "@react-navigation/native";
 
 import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
 import { ErrorBanner } from "../../../components/ErrorBanner";
 import { NativeHeaderToolbar } from "../../../native/StackHeader";
-import { FieldRow, ListRow, SectionTitle } from "../automations/AutomationsUi";
 import { useSeoClient, useSeoRead } from "./seo-api";
 import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
-  describeIndexState,
+  formatShortDate,
+  recentDays,
+  OVERVIEW_HISTORY_DAYS,
+  OVERVIEW_LOG_ENTRIES,
+} from "./seo-overview";
+import {
   displayableEnvelope,
   formatCount,
-  formatDateRange,
-  indexCoverage,
-  pagesNeedingAttention,
+  formatPosition,
   resolveSelectedSite,
   summarizeSeoError,
-  trueTotalsFromHistory,
-  verdictSummary,
+  type SeoHistoryDay,
+  type SeoLogEntry,
   type SeoSite,
   type SeoStackParamList,
 } from "./seo-state";
-import { SeoFreshnessBanner } from "./SeoUi";
+import { SeoImpressionChart } from "./SeoImpressionChart";
+import { SeoSectionHeader, SeoStaleNote } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 type SitesState =
@@ -33,38 +36,70 @@ type SitesState =
 
 const SITES_CACHE_KEY = "seo:sites";
 
-const SECTION_LINKS: ReadonlyArray<{
-  readonly screen: keyof Omit<SeoStackParamList, "SeoPage" | "SeoHome">;
-  readonly title: string;
-  readonly detail: string;
-}> = [
-  {
-    screen: "SeoOpportunities",
-    title: "Opportunities",
-    detail: "Striking-distance, CTR, new-demand, and cannibalization signals.",
-  },
-  {
-    screen: "SeoHistory",
-    title: "History",
-    detail: "Daily true clicks, impressions, CTR, and position.",
-  },
-  {
-    screen: "SeoRegistry",
-    title: "Registry",
-    detail: "Target pages, keyword plan, phase, and index state.",
-  },
-  { screen: "SeoLog", title: "Log", detail: "Newest-first Action and Note history." },
-  {
-    screen: "SeoQueries",
-    title: "Queries",
-    detail: "Top queries with page, brand, and mapping context.",
-  },
-];
+/** The daily table's columns, in the order the overview reads them. */
+function DailyRow(props: {
+  readonly cells: readonly [string, string, string, string];
+  readonly muted?: boolean;
+}) {
+  const tone = props.muted ? "text-foreground-muted" : "text-foreground";
+  return (
+    <View className="flex-row items-center py-1">
+      <Text className={`flex-[1.4] text-sm ${tone}`}>{props.cells[0]}</Text>
+      <Text className={`flex-1 text-right text-sm ${tone}`}>{props.cells[1]}</Text>
+      <Text className={`flex-1 text-right text-sm ${tone}`}>{props.cells[2]}</Text>
+      <Text className={`flex-1 text-right text-sm ${tone}`}>{props.cells[3]}</Text>
+    </View>
+  );
+}
+
+function DailyTable(props: { readonly days: readonly SeoHistoryDay[] }) {
+  return (
+    <View>
+      <DailyRow cells={["date", "impr.", "clicks", "pos."]} muted />
+      {props.days.map((day) => (
+        <DailyRow
+          key={day.date}
+          // A provisional day is still being revised by Google; it is shown
+          // rather than hidden, and dimmed rather than silently equal.
+          muted={day.provisional}
+          cells={[
+            formatShortDate(day.date),
+            formatCount(day.impressions),
+            formatCount(day.clicks),
+            formatPosition(day.position),
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+function LogRow(props: { readonly entry: SeoLogEntry; readonly onPress: () => void }) {
+  const { entry } = props;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={props.onPress}
+      className="py-2 active:opacity-70"
+    >
+      <View className="flex-row items-baseline justify-between gap-3">
+        <Text className="text-sm text-foreground-muted">{formatShortDate(entry.date)}</Text>
+        <Text className="flex-1 text-right text-sm text-foreground" numberOfLines={1}>
+          {entry.path}
+        </Text>
+      </View>
+      <Text className="mt-1 text-xs text-foreground-muted" numberOfLines={3}>
+        {entry.note ? `${entry.kind} · ${entry.note}` : entry.kind}
+      </Text>
+    </Pressable>
+  );
+}
 
 /**
- * SEO home: the visible persisted Site selector, freshness, true site
- * totals, per-page verdict summary, indexing coverage, and pages needing
- * attention. Read-only — there is no Sync action anywhere in this Area.
+ * SEO home: the selected Site, its impression trend over the overview
+ * window, the most recent daily totals, and the newest Log entries. Each
+ * section links to the screen that holds all of it. Read-only — there is no
+ * Sync action anywhere in this Area.
  */
 export function SeoHomeScreen() {
   const navigation = useNavigation<NavigationProp<SeoStackParamList>>();
@@ -105,21 +140,19 @@ export function SeoHomeScreen() {
   }, [preferenceReady, selectedSite, selectedSiteId, select]);
 
   const siteId = selectedSite?.id ?? null;
-  const statusFetcher = useMemo(
-    () => (client && siteId ? () => client.status(siteId) : null),
-    [client, siteId],
-  );
-  const pagesFetcher = useMemo(
-    () => (client && siteId ? () => client.pages(siteId) : null),
-    [client, siteId],
-  );
   const historyFetcher = useMemo(
-    () => (client && siteId ? () => client.history(siteId, 28) : null),
+    () => (client && siteId ? () => client.history(siteId, OVERVIEW_HISTORY_DAYS) : null),
     [client, siteId],
   );
-  const status = useSeoRead(siteId ? `status:${siteId}` : null, statusFetcher);
-  const pages = useSeoRead(siteId ? `pages:${siteId}` : null, pagesFetcher);
-  const history = useSeoRead(siteId ? `history:${siteId}:28` : null, historyFetcher);
+  const logFetcher = useMemo(
+    () => (client && siteId ? () => client.log(siteId) : null),
+    [client, siteId],
+  );
+  const history = useSeoRead(
+    siteId ? `history:${siteId}:${OVERVIEW_HISTORY_DAYS}` : null,
+    historyFetcher,
+  );
+  const log = useSeoRead(siteId ? `log:${siteId}` : null, logFetcher);
 
   if (!client) {
     return (
@@ -133,12 +166,10 @@ export function SeoHomeScreen() {
     );
   }
 
-  const statusEnvelope = displayableEnvelope(status.read);
-  const pagesEnvelope = displayableEnvelope(pages.read);
   const historyEnvelope = displayableEnvelope(history.read);
-  const attention = pagesEnvelope ? pagesNeedingAttention(pagesEnvelope.data.pages) : [];
-  const totals = historyEnvelope ? trueTotalsFromHistory(historyEnvelope.data.days) : null;
-  const coverage = pagesEnvelope ? indexCoverage(pagesEnvelope.data.pages) : null;
+  const logEnvelope = displayableEnvelope(log.read);
+  const days = historyEnvelope?.data.days ?? [];
+  const actions = logEnvelope?.data.actions ?? [];
 
   return (
     <>
@@ -177,12 +208,9 @@ export function SeoHomeScreen() {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              void Promise.all([
-                loadSites(),
-                status.reload(),
-                pages.reload(),
-                history.reload(),
-              ]).finally(() => setRefreshing(false));
+              void Promise.all([loadSites(), history.reload(), log.reload()]).finally(() =>
+                setRefreshing(false),
+              );
             }}
           />
         }
@@ -197,113 +225,45 @@ export function SeoHomeScreen() {
 
         {selectedSite ? (
           <>
-            <SectionTitle>Freshness</SectionTitle>
-            <SeoFreshnessBanner read={status.read} />
-            {statusEnvelope ? (
-              <View className="rounded-2xl border border-border bg-card px-4 py-2">
-                <FieldRow
-                  label="Data range"
-                  value={formatDateRange(
-                    statusEnvelope.data.data.firstDate,
-                    statusEnvelope.data.data.lastDate,
-                  )}
-                />
-                <FieldRow
-                  label="Synced days"
-                  value={formatCount(statusEnvelope.data.data.syncedDays)}
-                />
-                <FieldRow
-                  label="Registry"
-                  value={`${statusEnvelope.data.registry.targets} targets · ${statusEnvelope.data.registry.keywords} keywords · ${statusEnvelope.data.registry.clusters} clusters`}
-                />
-                <FieldRow
-                  label="Sitemap"
-                  value={`${statusEnvelope.data.sitemap.pages} pages · ${statusEnvelope.data.sitemap.unmapped.length} unmapped`}
-                />
-                <FieldRow label="Actions logged" value={formatCount(statusEnvelope.data.actions)} />
-              </View>
-            ) : null}
+            <View>
+              <Text className="font-t3-bold text-3xl text-foreground">{selectedSite.label}</Text>
+              <Text className="mt-0.5 text-base text-foreground-muted">{selectedSite.url}</Text>
+            </View>
+            <SeoStaleNote read={history.read} />
+            <SeoImpressionChart days={days} loading={history.read.kind === "loading"} />
 
-            <SectionTitle>True site totals</SectionTitle>
-            {totals ? (
-              totals.days === 0 ? (
-                <Text className="text-sm text-foreground-muted">
-                  No daily totals yet for this Site.
-                </Text>
-              ) : (
-                <View className="rounded-2xl border border-border bg-card px-4 py-2">
-                  <FieldRow
-                    label={`Clicks (${totals.days} days)`}
-                    value={formatCount(totals.clicks)}
-                  />
-                  <FieldRow
-                    label={`Impressions (${totals.days} days)`}
-                    value={formatCount(totals.impressions)}
-                  />
-                </View>
-              )
+            <SeoSectionHeader
+              title="Daily overview"
+              actionLabel="see more"
+              onPress={() => navigation.navigate("SeoHistory")}
+            />
+            {days.length === 0 ? (
+              <Text className="text-sm text-foreground-muted">
+                No daily totals yet for this Site.
+              </Text>
             ) : (
-              <SeoFreshnessBanner read={history.read} />
+              <DailyTable days={recentDays(days)} />
             )}
 
-            <SectionTitle>Verdicts</SectionTitle>
-            {pagesEnvelope ? (
-              pagesEnvelope.data.pages.length === 0 ? (
-                <Text className="text-sm text-foreground-muted">No measured pages yet.</Text>
-              ) : (
-                <View className="rounded-2xl border border-border bg-card px-4 py-2">
-                  {verdictSummary(pagesEnvelope.data.pages).map((entry) => (
-                    <FieldRow
-                      key={entry.verdict}
-                      label={entry.verdict}
-                      value={formatCount(entry.count)}
-                    />
-                  ))}
-                </View>
-              )
+            <SeoSectionHeader
+              title="Log"
+              actionLabel="see more"
+              onPress={() => navigation.navigate("SeoLog")}
+            />
+            <SeoStaleNote read={log.read} />
+            {actions.length === 0 ? (
+              <Text className="text-sm text-foreground-muted">No Actions or Notes logged yet.</Text>
             ) : (
-              <SeoFreshnessBanner read={pages.read} />
-            )}
-
-            <SectionTitle>Index coverage</SectionTitle>
-            {coverage ? (
-              <View className="rounded-2xl border border-border bg-card px-4 py-2">
-                <FieldRow label="Indexed" value={formatCount(coverage.indexed)} />
-                <FieldRow label="Not indexed" value={formatCount(coverage.notIndexed)} />
-                <FieldRow label="Unknown" value={formatCount(coverage.unknown)} />
-              </View>
-            ) : null}
-
-            <SectionTitle>Needs attention</SectionTitle>
-            {pagesEnvelope ? (
-              attention.length === 0 ? (
-                <Text className="text-sm text-foreground-muted">
-                  No page needs attention right now.
-                </Text>
-              ) : (
-                attention.map((page) => (
-                  <ListRow
-                    key={page.path}
-                    title={page.path}
-                    lines={[
-                      `${page.verdict} · ${describeIndexState(page.indexed, null)}`,
-                      ...page.reasons.slice(0, 2),
-                    ]}
-                    onPress={() => navigation.navigate("SeoPage", { path: page.path })}
+              actions
+                .slice(0, OVERVIEW_LOG_ENTRIES)
+                .map((entry, index) => (
+                  <LogRow
+                    key={`${entry.date}:${entry.path}:${entry.kind}:${entry.id ?? index}`}
+                    entry={entry}
+                    onPress={() => navigation.navigate("SeoPage", { path: entry.path })}
                   />
                 ))
-              )
-            ) : null}
-
-            <SectionTitle>Views</SectionTitle>
-            {SECTION_LINKS.map((link) => (
-              <ListRow
-                key={link.screen}
-                title={link.title}
-                lines={[link.detail]}
-                onPress={() => navigation.navigate(link.screen)}
-              />
-            ))}
+            )}
           </>
         ) : null}
       </ScrollView>
