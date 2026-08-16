@@ -49,6 +49,11 @@ export interface WorkflowSource {
   readonly source: string;
 }
 
+export interface NativeIosProjectSource {
+  readonly path: string;
+  readonly source: string;
+}
+
 export interface ResolvedExpoConfig {
   readonly name?: unknown;
   readonly version?: unknown;
@@ -183,6 +188,97 @@ export function assertDevskiConfigIsSafe(
   const violations = findDevskiConfigViolations(config, variant);
   if (violations.length > 0) {
     throw new Error(`Devski release configuration is unsafe:\n- ${violations.join("\n- ")}`);
+  }
+}
+
+/**
+ * The resolved Expo configuration carries one Apple team, but the generated
+ * Xcode project is what actually signs. Config plugins add the share and
+ * widget extension targets after Expo stamped the team, and `expo run:ios`
+ * re-signs every target from the keychain as soon as one target has no team.
+ * These checks read the generated project so that drift fails here instead of
+ * on a machine that belongs to more than one Apple team.
+ */
+// Each object in the `objects` dictionary is keyed by a 24-character
+// identifier and closed at its own indentation. Reading whole objects keeps
+// the checks honest: config plugins write `name` before `isa`, so scanning
+// forward from `isa` would read the next object's settings.
+const PBX_OBJECT_PATTERN =
+  /^([ \t]*)[0-9A-F]{24} (?:\/\* (?:.*?) \*\/ )?= \{\n([\s\S]*?)\n\1\};$/gm;
+const BUILD_CONFIGURATION_ISA_PATTERN = /^[ \t]*isa = XCBuildConfiguration;[ \t]*$/m;
+const BUILD_SETTINGS_PATTERN = /^[ \t]*buildSettings = \{\n([\s\S]*?)\n[ \t]*\};[ \t]*$/m;
+const CONFIGURATION_NAME_PATTERN = /^[ \t]*name = (.+);[ \t]*$/m;
+const PRODUCT_NAME_PATTERN = /^[ \t]*PRODUCT_NAME = (.+);[ \t]*$/m;
+const BUNDLE_IDENTIFIER_PATTERN = /^[ \t]*PRODUCT_BUNDLE_IDENTIFIER = (.+);[ \t]*$/m;
+const DEVELOPMENT_TEAM_PATTERN = /^[ \t]*DEVELOPMENT_TEAM = (.+);[ \t]*$/m;
+const TARGET_ATTRIBUTES_TEAM_PATTERN = /^[ \t]*DevelopmentTeam = (.+);[ \t]*$/gm;
+
+function trimPbxQuotes(value: string): string {
+  return value.trim().replace(/^"(.*)"$/, "$1");
+}
+
+export function findNativeIosSigningViolations(
+  project: NativeIosProjectSource,
+  appleTeamId: string = DEVSKI_IDENTITY.appleTeamId,
+): ReadonlyArray<string> {
+  const violations: string[] = [];
+  let signableConfigurations = 0;
+
+  for (const match of project.source.matchAll(PBX_OBJECT_PATTERN)) {
+    const object = match[2] ?? "";
+    if (!BUILD_CONFIGURATION_ISA_PATTERN.test(object)) {
+      continue;
+    }
+    const buildSettings = BUILD_SETTINGS_PATTERN.exec(object)?.[1] ?? "";
+    const configuration = trimPbxQuotes(CONFIGURATION_NAME_PATTERN.exec(object)?.[1] ?? "unnamed");
+    const productName = PRODUCT_NAME_PATTERN.exec(buildSettings)?.[1];
+    if (productName === undefined) {
+      // Project-level configurations build no product and are never signed.
+      continue;
+    }
+    signableConfigurations += 1;
+
+    const target = trimPbxQuotes(BUNDLE_IDENTIFIER_PATTERN.exec(buildSettings)?.[1] ?? productName);
+    const developmentTeam = DEVELOPMENT_TEAM_PATTERN.exec(buildSettings)?.[1];
+    if (developmentTeam === undefined) {
+      violations.push(
+        `${project.path}: target ${target} (${configuration}) has no DEVELOPMENT_TEAM, ` +
+          "so expo run:ios re-signs every target with a keychain team",
+      );
+      continue;
+    }
+    if (trimPbxQuotes(developmentTeam) !== appleTeamId) {
+      violations.push(
+        `${project.path}: target ${target} (${configuration}) must use DEVELOPMENT_TEAM ` +
+          `${appleTeamId}, found ${trimPbxQuotes(developmentTeam)}`,
+      );
+    }
+  }
+
+  if (signableConfigurations === 0) {
+    violations.push(`${project.path} declares no signable target build configuration`);
+  }
+
+  for (const match of project.source.matchAll(TARGET_ATTRIBUTES_TEAM_PATTERN)) {
+    const developmentTeam = trimPbxQuotes(match[1] ?? "");
+    if (developmentTeam !== appleTeamId) {
+      violations.push(
+        `${project.path}: TargetAttributes DevelopmentTeam must be ${appleTeamId}, ` +
+          `found ${developmentTeam}`,
+      );
+    }
+  }
+
+  return violations;
+}
+
+export function assertNativeIosSigningIsSafe(
+  project: NativeIosProjectSource,
+  appleTeamId: string = DEVSKI_IDENTITY.appleTeamId,
+): void {
+  const violations = findNativeIosSigningViolations(project, appleTeamId);
+  if (violations.length > 0) {
+    throw new Error(`Devski native iOS signing identity is unsafe:\n- ${violations.join("\n- ")}`);
   }
 }
 

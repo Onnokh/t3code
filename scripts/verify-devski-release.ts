@@ -3,9 +3,11 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeChildProcess from "node:child_process";
 
+import { DEVSKI_IDENTITY } from "./lib/devski-identity.ts";
 import {
   assertDevskiConfigIsSafe,
   assertDevskiEasConfigIsSafe,
+  assertNativeIosSigningIsSafe,
   assertWorkflowSourcesAreSafe,
   type ResolvedEasConfig,
   type ResolvedExpoConfig,
@@ -39,4 +41,38 @@ const workflows: WorkflowSource[] = NodeFS.readdirSync(workflowsRoot)
   }));
 
 assertWorkflowSourcesAreSafe(workflows);
+
+// The generated Xcode project only exists after a prebuild, and a Personal
+// Team prebuild carries another bundle identifier and may sign with its own
+// team. Both cases report and continue instead of failing CI.
+const nativeProjectPaths = findNativeIosProjectPaths(NodePath.join(mobileRoot, "ios"));
+let checkedNativeProjects = 0;
+for (const nativeProjectPath of nativeProjectPaths) {
+  const path = NodePath.relative(repoRoot, nativeProjectPath);
+  const source = NodeFS.readFileSync(nativeProjectPath, "utf8");
+  if (!source.includes(`PRODUCT_BUNDLE_IDENTIFIER = "${DEVSKI_IDENTITY.iosBundleIdentifier}`)) {
+    console.log(`Skipping ${path}: it was prebuilt for another bundle identifier.`);
+    continue;
+  }
+  assertNativeIosSigningIsSafe({ path, source });
+  checkedNativeProjects += 1;
+}
+if (nativeProjectPaths.length === 0) {
+  console.log("Skipping the native iOS signing check: apps/mobile/ios is not prebuilt.");
+} else if (checkedNativeProjects > 0) {
+  console.log(
+    `Every target in ${checkedNativeProjects} generated Xcode project signs with the Devski Apple team.`,
+  );
+}
+
 console.log("Devski production Expo/EAS config and publishing workflows are release-safe.");
+
+function findNativeIosProjectPaths(iosRoot: string): ReadonlyArray<string> {
+  if (!NodeFS.existsSync(iosRoot)) {
+    return [];
+  }
+  return NodeFS.readdirSync(iosRoot)
+    .filter((entry) => entry.endsWith(".xcodeproj"))
+    .map((entry) => NodePath.join(iosRoot, entry, "project.pbxproj"))
+    .filter((pbxprojPath) => NodeFS.existsSync(pbxprojPath));
+}

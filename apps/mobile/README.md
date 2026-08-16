@@ -45,6 +45,10 @@ DEVSKI_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.devski.dev \
 vp run ios:dev
 ```
 
+Every other build signs with the one Apple team in the Devski identity manifest, on every target.
+Add `DEVSKI_IOS_PERSONAL_TEAM_ID=<team>` when the Personal Team that owns that bundle identifier is
+another team.
+
 Build and install a self-contained Release app that does not need Metro:
 
 ```bash

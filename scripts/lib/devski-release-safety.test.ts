@@ -3,8 +3,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { DEVSKI_IDENTITY, resolveDevskiIdentity } from "./devski-identity.ts";
 import {
   assertDevskiConfigIsSafe,
+  assertNativeIosSigningIsSafe,
   findDevskiEasConfigViolations,
   findDevskiConfigViolations,
+  findNativeIosSigningViolations,
   findWorkflowSafetyViolations,
 } from "./devski-release-safety.ts";
 
@@ -212,5 +214,148 @@ describe("Devski EAS configuration", () => {
         "build.devski-production.channel must be omitted while OTA updates are disabled",
       ]),
     );
+  });
+});
+
+const PBXPROJ_PATH = "apps/mobile/ios/DevskiDev.xcodeproj/project.pbxproj";
+
+let objectIdentifierCount = 0;
+function objectIdentifier() {
+  objectIdentifierCount += 1;
+  return objectIdentifierCount.toString(16).toUpperCase().padStart(24, "0");
+}
+
+/**
+ * The config plugins that add the extension targets write `name` before `isa`,
+ * the Expo template writes it after, and one target lists its build settings
+ * as a nested array. The fixtures keep all three shapes so the guard cannot
+ * pass by reading the neighbouring object.
+ */
+function targetConfiguration({
+  bundleIdentifier,
+  name,
+  developmentTeam,
+  nameFirst = true,
+}: {
+  readonly bundleIdentifier: string;
+  readonly name: string;
+  readonly developmentTeam?: string;
+  readonly nameFirst?: boolean;
+}) {
+  const header = [`\t\t\tname = ${name};`, "\t\t\tisa = XCBuildConfiguration;"];
+  return [
+    `\t\t${objectIdentifier()} /* ${name} */ = {`,
+    ...(nameFirst ? header : [header[1]!]),
+    "\t\t\tbuildSettings = {",
+    ...(developmentTeam === undefined ? [] : [`\t\t\t\tDEVELOPMENT_TEAM = ${developmentTeam};`]),
+    "\t\t\t\tLD_RUNPATH_SEARCH_PATHS = (",
+    '\t\t\t\t\t"$(inherited)",',
+    "\t\t\t\t);",
+    `\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = "${bundleIdentifier}";`,
+    '\t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";',
+    "\t\t\t};",
+    ...(nameFirst ? [] : [header[0]!]),
+    "\t\t};",
+  ].join("\n");
+}
+
+// A project-level configuration builds no product and is never signed.
+const PROJECT_CONFIGURATION = [
+  `\t\t${objectIdentifier()} /* Release */ = {`,
+  "\t\t\tisa = XCBuildConfiguration;",
+  "\t\t\tbuildSettings = {",
+  '\t\t\t\tSDKROOT = "iphoneos";',
+  "\t\t\t};",
+  "\t\t\tname = Release;",
+  "\t\t};",
+].join("\n");
+
+function pbxproj(configurations: ReadonlyArray<string>, targetAttributeTeams: string = "") {
+  return [
+    "// !$*UTF8*$!",
+    "{",
+    "\tobjects = {",
+    targetAttributeTeams,
+    ...configurations,
+    "\t};",
+    "}",
+  ].join("\n");
+}
+
+function devskiProject(developmentTeam: string | undefined) {
+  return pbxproj([
+    PROJECT_CONFIGURATION,
+    targetConfiguration({
+      bundleIdentifier: "dev.onkie.devski",
+      name: "Debug",
+      developmentTeam: DEVSKI_IDENTITY.appleTeamId,
+      nameFirst: false,
+    }),
+    targetConfiguration({
+      bundleIdentifier: "dev.onkie.devski.widgets",
+      name: "Release",
+      developmentTeam: DEVSKI_IDENTITY.appleTeamId,
+    }),
+    targetConfiguration({
+      bundleIdentifier: "dev.onkie.devski.sharing",
+      name: "Release",
+      ...(developmentTeam === undefined ? {} : { developmentTeam }),
+    }),
+  ]);
+}
+
+describe("Devski generated iOS project signing identity", () => {
+  it("accepts a project where every signable target carries the Devski Apple team", () => {
+    expect(
+      findNativeIosSigningViolations({
+        path: PBXPROJ_PATH,
+        source: devskiProject(DEVSKI_IDENTITY.appleTeamId),
+      }),
+    ).toEqual([]);
+  });
+
+  it("rejects an extension target that prebuild left without a team", () => {
+    expect(
+      findNativeIosSigningViolations({ path: PBXPROJ_PATH, source: devskiProject(undefined) }),
+    ).toEqual([
+      `${PBXPROJ_PATH}: target dev.onkie.devski.sharing (Release) has no DEVELOPMENT_TEAM, ` +
+        "so expo run:ios re-signs every target with a keychain team",
+    ]);
+  });
+
+  it("rejects a target signed by another Apple team", () => {
+    expect(
+      findNativeIosSigningViolations({ path: PBXPROJ_PATH, source: devskiProject("YVWRBCSWU7") }),
+    ).toEqual([
+      `${PBXPROJ_PATH}: target dev.onkie.devski.sharing (Release) must use DEVELOPMENT_TEAM ` +
+        `${DEVSKI_IDENTITY.appleTeamId}, found YVWRBCSWU7`,
+    ]);
+  });
+
+  it("rejects a stale team in the Xcode signing pane", () => {
+    const source = pbxproj(
+      [
+        targetConfiguration({
+          bundleIdentifier: "dev.onkie.devski",
+          name: "Debug",
+          developmentTeam: `"${DEVSKI_IDENTITY.appleTeamId}"`,
+        }),
+      ],
+      '\t\t\t\t\t\tDevelopmentTeam = "YVWRBCSWU7";',
+    );
+
+    expect(findNativeIosSigningViolations({ path: PBXPROJ_PATH, source })).toEqual([
+      `${PBXPROJ_PATH}: TargetAttributes DevelopmentTeam must be ${DEVSKI_IDENTITY.appleTeamId}, ` +
+        "found YVWRBCSWU7",
+    ]);
+  });
+
+  it("rejects a project the guard cannot read instead of passing it", () => {
+    expect(findNativeIosSigningViolations({ path: PBXPROJ_PATH, source: pbxproj([]) })).toEqual([
+      `${PBXPROJ_PATH} declares no signable target build configuration`,
+    ]);
+    expect(() =>
+      assertNativeIosSigningIsSafe({ path: PBXPROJ_PATH, source: devskiProject(undefined) }),
+    ).toThrow(/native iOS signing identity is unsafe/);
   });
 });

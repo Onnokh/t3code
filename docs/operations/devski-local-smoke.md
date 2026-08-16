@@ -62,11 +62,19 @@ the reduced-capability variant:
 cd apps/mobile
 DEVSKI_IOS_PERSONAL_TEAM=1 \
 DEVSKI_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.devski.dev \
+DEVSKI_IOS_PERSONAL_TEAM_ID=<personal team> \
 vp run ios:dev
 ```
 
-Replace `com.example.devski.dev` with a bundle identifier controlled by the selected team. The app
-must install and open as **Devski Dev**; Expo Go is neither required nor supported.
+Replace `com.example.devski.dev` with a bundle identifier controlled by the selected team, and
+`<personal team>` with that team's ten-character identifier. `DEVSKI_IOS_PERSONAL_TEAM_ID` is
+optional: without it the build signs with the team in the Devski identity manifest. The app must
+install and open as **Devski Dev**; Expo Go is neither required nor supported.
+
+Every full-capability build signs each of its three targets — app, `ExpoWidgetsTarget`, and
+`expo-sharing-extension` — with the Devski Apple team, so a Mac that belongs to more than one team
+does not need Xcode to pick. `pnpm --dir apps/mobile verify:release` reads the generated
+`ios/*.xcodeproj/project.pbxproj` and fails when a target signs with another team.
 
 ## 4. Pair once
 
