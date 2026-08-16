@@ -140,13 +140,41 @@ and Code threads run against it. Sessions whose directory resolves outside
 
 ## Pairing
 
-First boot prints a one-time pairing URL in the container log. Mint later
-pairing credentials inside the container:
+First boot prints a pairing URL in the container log. That URL is one-shot: the
+first client that opens it consumes the token, and no later boot prints it
+again.
+
+Mint every later pairing credential inside the container with the auth control
+plane, which writes directly to T3's auth store:
 
 ```sh
-node apps/server/src/bin.ts pair --base-dir /data/t3
+node apps/server/src/bin.ts auth pairing create --base-dir /data/t3 --label iphone
 ```
+
+It prints the credential id, the 12-character code, and the expiry. The
+default TTL is 5 minutes; pass `--ttl 15m` for more time. Add
+`--base-url https://devski.onkie.dev` to also print a ready
+`https://devski.onkie.dev/pair#token=...` link, and `--json` for scripts.
 
 Enter the 12-character code in Devski (the app already defaults to
 `https://devski.onkie.dev`), or run the Gateway smoke from
 `Onnokh/digital-home` with `--pairing-code`.
+
+The companions use the same `--base-dir`:
+
+```sh
+node apps/server/src/bin.ts auth pairing list --base-dir /data/t3
+node apps/server/src/bin.ts auth pairing revoke --base-dir /data/t3 <id>
+```
+
+`list` shows the id, label, scopes, and expiry of each active credential and
+never reveals a code; `revoke` takes an id from that list.
+
+Do not use `t3 pair` in this container. It discovers the server out of band
+through the `userdata/server-runtime.json` file a live server writes next to
+its database, and then probes the origin recorded there. That file is absent on
+this deployment, so `pair` fails with
+`NoRunningServerError: No running T3 Code server found.` while the server is
+healthy, and it has no flag that points it at a known-running server.
+`auth pairing create` needs no discovery and mints the same standard-scope
+client credential that `pair` would.

@@ -8,6 +8,11 @@
  * own `.t3` is checked first (matching dev-runner precedence); otherwise the
  * shared T3 home. `--tailscale` publishes the server over Tailscale Serve
  * HTTPS and pairs through the tailnet URL instead.
+ *
+ * Discovery is the only way in: there is no flag that points `pair` at a
+ * known-running server. A deployment whose server recorded no runtime state
+ * mints credentials with `t3 auth pairing create --base-dir <data-dir>`, which
+ * writes to the same auth store without any discovery.
  */
 import {
   AuthStandardClientScopes,
@@ -72,13 +77,22 @@ export class NoRunningServerError extends Schema.TaggedErrorClass<NoRunningServe
   "NoRunningServerError",
   {
     checkedStatePaths: Schema.Array(Schema.String),
+    checkedBaseDirs: Schema.Array(Schema.String),
   },
 ) {
   override get message(): string {
+    // Telling a container operator to run `npx t3 serve` is wrong advice when
+    // the container is already serving: discovery, not the server, is what
+    // failed. `t3 auth pairing create` mints the same standard-scope client
+    // credential straight into the auth store, without any discovery.
+    const baseDirHint =
+      this.checkedBaseDirs.length === 1 ? (this.checkedBaseDirs[0] ?? "<data-dir>") : "<data-dir>";
     return [
       "No running T3 Code server found.",
       ...this.checkedStatePaths.map((statePath) => `  checked ${statePath}`),
       "Start one with `npx t3 serve`, or connect this machine with T3 Connect: `npx t3 connect`.",
+      "If a server already serves this data directory but recorded no runtime state (a container, for example), mint the token through the auth control plane instead:",
+      `  npx t3 auth pairing create --base-dir ${baseDirHint}`,
     ].join("\n");
   }
 }
@@ -265,8 +279,9 @@ const discoverPairTarget = Effect.fn("pair.discoverPairTarget")(function* (
     bases.push(yield* resolveBaseDir(Option.getOrUndefined(envHome)));
   }
 
+  const checkedBaseDirs = [...new Set(bases)];
   const checkedStatePaths: Array<string> = [];
-  for (const baseDir of new Set(bases)) {
+  for (const baseDir of checkedBaseDirs) {
     for (const variant of ["userdata", "dev"] as const) {
       const derivedPaths = yield* ServerConfig.deriveServerPaths(
         baseDir,
@@ -297,7 +312,7 @@ const discoverPairTarget = Effect.fn("pair.discoverPairTarget")(function* (
       } satisfies DiscoveredPairTarget;
     }
   }
-  return yield* new NoRunningServerError({ checkedStatePaths });
+  return yield* new NoRunningServerError({ checkedStatePaths, checkedBaseDirs });
 });
 
 /**
