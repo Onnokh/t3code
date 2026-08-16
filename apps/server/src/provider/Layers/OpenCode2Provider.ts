@@ -217,7 +217,7 @@ export const makePendingOpenCode2Provider = (
 
 export const checkOpenCode2ProviderStatus = Effect.fn("checkOpenCode2ProviderStatus")(function* (
   settings: OpenCode2Settings,
-  cwd: string,
+  fallbackDirectory: string,
 ): Effect.fn.Return<ServerProviderDraft, never, HttpClient.HttpClient> {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const customModels = settings.customModels;
@@ -271,13 +271,21 @@ export const checkOpenCode2ProviderStatus = Effect.fn("checkOpenCode2ProviderSta
     });
   }
 
+  // The probe directory travels to the external server, so it has to be a
+  // path that server can resolve. This server's own cwd is not: with T3 and
+  // OpenCode in separate containers only the Code Workspace Root is mounted
+  // on both sides, and OpenCode answers 500 for a directory it cannot see.
+  // The configured root is the one path both are guaranteed to share; cwd
+  // stays the fallback for a single-machine install that configured none.
+  const probeDirectory = settings.workspaceRoot.trim() || fallbackDirectory;
+
   const inventoryExit = yield* Effect.exit(
     Effect.gen(function* () {
       const client = yield* makeOpenCode2Client({
         serverUrl,
         ...(settings.serverPassword ? { serverPassword: settings.serverPassword } : {}),
       });
-      return yield* loadOpenCode2Inventory(client, cwd);
+      return yield* loadOpenCode2Inventory(client, probeDirectory);
     }),
   );
 
