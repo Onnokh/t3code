@@ -10,7 +10,8 @@ import {
   createNativeStackScreen,
 } from "@react-navigation/native-stack";
 
-import { RootStack } from "../../Stack";
+import { GLASS_HEADER_OPTIONS, RootStack } from "../../Stack";
+import { getDevskiBrandHeaderOptions } from "./DevskiBrandTitle";
 import { useEnvironments } from "../../state/environments";
 import { ConnectionsNewRouteScreen } from "../connection/ConnectionsNewRouteScreen";
 import { useConnectionController } from "../connection/useConnectionController";
@@ -28,10 +29,11 @@ import { SeoQueriesScreen } from "./seo/SeoQueriesScreen";
 import { SeoRegistryScreen } from "./seo/SeoRegistryScreen";
 
 const SeoStack = createNativeStackNavigator({
+  screenOptions: GLASS_HEADER_OPTIONS,
   screens: {
     SeoHome: createNativeStackScreen({
       screen: SeoHomeScreen,
-      options: { title: "SEO" },
+      options: getDevskiBrandHeaderOptions("SEO"),
     }),
     SeoOpportunities: createNativeStackScreen({
       screen: SeoOpportunitiesScreen,
@@ -61,10 +63,11 @@ const SeoStack = createNativeStackNavigator({
 });
 
 const AutomationsStack = createNativeStackNavigator({
+  screenOptions: GLASS_HEADER_OPTIONS,
   screens: {
     AutomationsHome: createNativeStackScreen({
       screen: AutomationsJobsScreen,
-      options: { title: "Automations" },
+      options: getDevskiBrandHeaderOptions("Automations"),
     }),
     AutomationJob: createNativeStackScreen({
       screen: AutomationJobDetailScreen,

@@ -5,7 +5,8 @@ import { useFocusEffect, useNavigation, type NavigationProp } from "@react-navig
 import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
 import { ErrorBanner } from "../../../components/ErrorBanner";
-import { ChoiceRow, FieldRow, ListRow, SectionTitle } from "../automations/AutomationsUi";
+import { NativeHeaderToolbar } from "../../../native/StackHeader";
+import { FieldRow, ListRow, SectionTitle } from "../automations/AutomationsUi";
 import { useSeoClient, useSeoRead } from "./seo-api";
 import {
   describeIndexState,
@@ -130,154 +131,172 @@ export function SeoHomeScreen() {
   const coverage = pagesEnvelope ? indexCoverage(pagesEnvelope.data.pages) : null;
 
   return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      className="flex-1 bg-screen"
-      contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            void Promise.all([
-              loadSites(),
-              status.reload(),
-              pages.reload(),
-              history.reload(),
-            ]).finally(() => setRefreshing(false));
-          }}
-        />
-      }
-    >
-      <SectionTitle>Site</SectionTitle>
-      {sitesState.kind === "loading" ? (
-        <Text className="text-sm text-foreground-muted">Loading configured Sites…</Text>
-      ) : null}
-      {sitesState.kind === "error" ? <ErrorBanner message={sitesState.message} /> : null}
-      {sites.map((site) => (
-        <ChoiceRow
-          key={site.id}
-          label={site.label}
-          detail={site.available ? site.url : `${site.url} · currently unavailable`}
-          selected={selectedSite?.id === site.id}
-          onPress={() => select(site.id)}
-        />
-      ))}
-      {sitesState.kind === "ready" && sites.length === 0 ? (
-        <Text className="text-sm text-foreground-muted">No Sites are configured.</Text>
-      ) : null}
-
-      {selectedSite ? (
-        <>
-          <SectionTitle>Freshness</SectionTitle>
-          <SeoFreshnessBanner read={status.read} />
-          {statusEnvelope ? (
-            <View className="rounded-2xl border border-border bg-card px-4 py-2">
-              <FieldRow
-                label="Data range"
-                value={formatDateRange(
-                  statusEnvelope.data.data.firstDate,
-                  statusEnvelope.data.data.lastDate,
-                )}
-              />
-              <FieldRow
-                label="Synced days"
-                value={formatCount(statusEnvelope.data.data.syncedDays)}
-              />
-              <FieldRow
-                label="Registry"
-                value={`${statusEnvelope.data.registry.targets} targets · ${statusEnvelope.data.registry.keywords} keywords · ${statusEnvelope.data.registry.clusters} clusters`}
-              />
-              <FieldRow
-                label="Sitemap"
-                value={`${statusEnvelope.data.sitemap.pages} pages · ${statusEnvelope.data.sitemap.unmapped.length} unmapped`}
-              />
-              <FieldRow label="Actions logged" value={formatCount(statusEnvelope.data.actions)} />
-            </View>
-          ) : null}
-
-          <SectionTitle>True site totals</SectionTitle>
-          {totals ? (
-            totals.days === 0 ? (
-              <Text className="text-sm text-foreground-muted">
-                No daily totals yet for this Site.
-              </Text>
-            ) : (
-              <View className="rounded-2xl border border-border bg-card px-4 py-2">
-                <FieldRow
-                  label={`Clicks (${totals.days} days)`}
-                  value={formatCount(totals.clicks)}
-                />
-                <FieldRow
-                  label={`Impressions (${totals.days} days)`}
-                  value={formatCount(totals.impressions)}
-                />
-              </View>
-            )
-          ) : (
-            <SeoFreshnessBanner read={history.read} />
-          )}
-
-          <SectionTitle>Verdicts</SectionTitle>
-          {pagesEnvelope ? (
-            pagesEnvelope.data.pages.length === 0 ? (
-              <Text className="text-sm text-foreground-muted">No measured pages yet.</Text>
-            ) : (
-              <View className="rounded-2xl border border-border bg-card px-4 py-2">
-                {verdictSummary(pagesEnvelope.data.pages).map((entry) => (
-                  <FieldRow
-                    key={entry.verdict}
-                    label={entry.verdict}
-                    value={formatCount(entry.count)}
-                  />
-                ))}
-              </View>
-            )
-          ) : (
-            <SeoFreshnessBanner read={pages.read} />
-          )}
-
-          <SectionTitle>Index coverage</SectionTitle>
-          {coverage ? (
-            <View className="rounded-2xl border border-border bg-card px-4 py-2">
-              <FieldRow label="Indexed" value={formatCount(coverage.indexed)} />
-              <FieldRow label="Not indexed" value={formatCount(coverage.notIndexed)} />
-              <FieldRow label="Unknown" value={formatCount(coverage.unknown)} />
-            </View>
-          ) : null}
-
-          <SectionTitle>Needs attention</SectionTitle>
-          {pagesEnvelope ? (
-            attention.length === 0 ? (
-              <Text className="text-sm text-foreground-muted">
-                No page needs attention right now.
-              </Text>
-            ) : (
-              attention.map((page) => (
-                <ListRow
-                  key={page.path}
-                  title={page.path}
-                  lines={[
-                    `${page.verdict} · ${describeIndexState(page.indexed, null)}`,
-                    ...page.reasons.slice(0, 2),
-                  ]}
-                  onPress={() => navigation.navigate("SeoPage", { path: page.path })}
-                />
-              ))
-            )
-          ) : null}
-
-          <SectionTitle>Views</SectionTitle>
-          {SECTION_LINKS.map((link) => (
-            <ListRow
-              key={link.screen}
-              title={link.title}
-              lines={[link.detail]}
-              onPress={() => navigation.navigate(link.screen)}
-            />
+    <>
+      {/* The Site selection scopes every SEO screen, so it reads as the
+          Area's one navigation-bar control rather than a list of cards.
+          The control is the same filter affordance the thread list uses;
+          the menu is titled and check-marked for the current Site. */}
+      <NativeHeaderToolbar placement="right">
+        <NativeHeaderToolbar.Menu
+          accessibilityLabel="Switch Site"
+          disabled={sites.length === 0}
+          icon="line.3.horizontal.decrease.circle"
+          title="Site"
+          separateBackground
+        >
+          {sites.map((site) => (
+            <NativeHeaderToolbar.MenuAction
+              key={site.id}
+              isOn={selectedSite?.id === site.id}
+              // The URL wraps to a second line in a menu row and says less
+              // than the label does; only its unavailability is news.
+              subtitle={site.available ? undefined : "Currently unavailable"}
+              onPress={() => select(site.id)}
+            >
+              <NativeHeaderToolbar.Label>{site.label}</NativeHeaderToolbar.Label>
+            </NativeHeaderToolbar.MenuAction>
           ))}
-        </>
-      ) : null}
-    </ScrollView>
+        </NativeHeaderToolbar.Menu>
+      </NativeHeaderToolbar>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        className="flex-1 bg-screen"
+        contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void Promise.all([
+                loadSites(),
+                status.reload(),
+                pages.reload(),
+                history.reload(),
+              ]).finally(() => setRefreshing(false));
+            }}
+          />
+        }
+      >
+        {sitesState.kind === "loading" ? (
+          <Text className="text-sm text-foreground-muted">Loading configured Sites…</Text>
+        ) : null}
+        {sitesState.kind === "error" ? <ErrorBanner message={sitesState.message} /> : null}
+        {sitesState.kind === "ready" && sites.length === 0 ? (
+          <Text className="text-sm text-foreground-muted">No Sites are configured.</Text>
+        ) : null}
+
+        {selectedSite ? (
+          <>
+            <SectionTitle>Freshness</SectionTitle>
+            <SeoFreshnessBanner read={status.read} />
+            {statusEnvelope ? (
+              <View className="rounded-2xl border border-border bg-card px-4 py-2">
+                <FieldRow
+                  label="Data range"
+                  value={formatDateRange(
+                    statusEnvelope.data.data.firstDate,
+                    statusEnvelope.data.data.lastDate,
+                  )}
+                />
+                <FieldRow
+                  label="Synced days"
+                  value={formatCount(statusEnvelope.data.data.syncedDays)}
+                />
+                <FieldRow
+                  label="Registry"
+                  value={`${statusEnvelope.data.registry.targets} targets · ${statusEnvelope.data.registry.keywords} keywords · ${statusEnvelope.data.registry.clusters} clusters`}
+                />
+                <FieldRow
+                  label="Sitemap"
+                  value={`${statusEnvelope.data.sitemap.pages} pages · ${statusEnvelope.data.sitemap.unmapped.length} unmapped`}
+                />
+                <FieldRow label="Actions logged" value={formatCount(statusEnvelope.data.actions)} />
+              </View>
+            ) : null}
+
+            <SectionTitle>True site totals</SectionTitle>
+            {totals ? (
+              totals.days === 0 ? (
+                <Text className="text-sm text-foreground-muted">
+                  No daily totals yet for this Site.
+                </Text>
+              ) : (
+                <View className="rounded-2xl border border-border bg-card px-4 py-2">
+                  <FieldRow
+                    label={`Clicks (${totals.days} days)`}
+                    value={formatCount(totals.clicks)}
+                  />
+                  <FieldRow
+                    label={`Impressions (${totals.days} days)`}
+                    value={formatCount(totals.impressions)}
+                  />
+                </View>
+              )
+            ) : (
+              <SeoFreshnessBanner read={history.read} />
+            )}
+
+            <SectionTitle>Verdicts</SectionTitle>
+            {pagesEnvelope ? (
+              pagesEnvelope.data.pages.length === 0 ? (
+                <Text className="text-sm text-foreground-muted">No measured pages yet.</Text>
+              ) : (
+                <View className="rounded-2xl border border-border bg-card px-4 py-2">
+                  {verdictSummary(pagesEnvelope.data.pages).map((entry) => (
+                    <FieldRow
+                      key={entry.verdict}
+                      label={entry.verdict}
+                      value={formatCount(entry.count)}
+                    />
+                  ))}
+                </View>
+              )
+            ) : (
+              <SeoFreshnessBanner read={pages.read} />
+            )}
+
+            <SectionTitle>Index coverage</SectionTitle>
+            {coverage ? (
+              <View className="rounded-2xl border border-border bg-card px-4 py-2">
+                <FieldRow label="Indexed" value={formatCount(coverage.indexed)} />
+                <FieldRow label="Not indexed" value={formatCount(coverage.notIndexed)} />
+                <FieldRow label="Unknown" value={formatCount(coverage.unknown)} />
+              </View>
+            ) : null}
+
+            <SectionTitle>Needs attention</SectionTitle>
+            {pagesEnvelope ? (
+              attention.length === 0 ? (
+                <Text className="text-sm text-foreground-muted">
+                  No page needs attention right now.
+                </Text>
+              ) : (
+                attention.map((page) => (
+                  <ListRow
+                    key={page.path}
+                    title={page.path}
+                    lines={[
+                      `${page.verdict} · ${describeIndexState(page.indexed, null)}`,
+                      ...page.reasons.slice(0, 2),
+                    ]}
+                    onPress={() => navigation.navigate("SeoPage", { path: page.path })}
+                  />
+                ))
+              )
+            ) : null}
+
+            <SectionTitle>Views</SectionTitle>
+            {SECTION_LINKS.map((link) => (
+              <ListRow
+                key={link.screen}
+                title={link.title}
+                lines={[link.detail]}
+                onPress={() => navigation.navigate(link.screen)}
+              />
+            ))}
+          </>
+        ) : null}
+      </ScrollView>
+    </>
   );
 }

@@ -14,7 +14,8 @@ import {
   type AutomationJob,
   type AutomationsStackParamList,
 } from "./automations-state";
-import { ListRow, PlainButton, SectionTitle } from "./AutomationsUi";
+import { NativeHeaderToolbar } from "../../../native/StackHeader";
+import { ListRow, SectionTitle } from "./AutomationsUi";
 
 type LoadState =
   | { readonly kind: "loading" }
@@ -73,62 +74,70 @@ export function AutomationsJobsScreen() {
     state.kind === "ready" ? splitJobs(state.jobs) : { active: [], archived: [] };
 
   return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      className="flex-1 bg-screen"
-      contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            void load().finally(() => setRefreshing(false));
-          }}
+    <>
+      {/* Authoring a Job is the Area's compose action, so it sits in the
+          navigation bar where a new thread does, not on top of the list. */}
+      <NativeHeaderToolbar placement="right">
+        <NativeHeaderToolbar.Button
+          accessibilityLabel="New Job"
+          icon="square.and.pencil"
+          onPress={() => navigation.navigate("AutomationJobEditor", undefined)}
+          separateBackground
         />
-      }
-    >
-      <PlainButton
-        label="New Job"
-        onPress={() => navigation.navigate("AutomationJobEditor", undefined)}
-      />
-      {state.kind === "loading" ? (
-        <Text className="text-sm text-foreground-muted">Loading Jobs…</Text>
-      ) : null}
-      {state.kind === "error" ? <ErrorBanner message={state.message} /> : null}
-      {state.kind === "ready" ? (
-        <>
-          <SectionTitle>Active Jobs</SectionTitle>
-          {active.length === 0 ? (
-            <Text className="text-sm text-foreground-muted">No active Jobs.</Text>
-          ) : (
-            active.map((job) => (
-              <ListRow
-                key={job.id}
-                title={job.name}
-                lines={jobLines(job)}
-                onPress={() =>
-                  navigation.navigate("AutomationJob", { jobId: job.id, name: job.name })
-                }
-              />
-            ))
-          )}
-          <SectionTitle>Archived Jobs</SectionTitle>
-          {archived.length === 0 ? (
-            <Text className="text-sm text-foreground-muted">No archived Jobs.</Text>
-          ) : (
-            archived.map((job) => (
-              <ListRow
-                key={job.id}
-                title={job.name}
-                lines={jobLines(job)}
-                onPress={() =>
-                  navigation.navigate("AutomationJob", { jobId: job.id, name: job.name })
-                }
-              />
-            ))
-          )}
-        </>
-      ) : null}
-    </ScrollView>
+      </NativeHeaderToolbar>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        className="flex-1 bg-screen"
+        contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void load().finally(() => setRefreshing(false));
+            }}
+          />
+        }
+      >
+        {state.kind === "loading" ? (
+          <Text className="text-sm text-foreground-muted">Loading Jobs…</Text>
+        ) : null}
+        {state.kind === "error" ? <ErrorBanner message={state.message} /> : null}
+        {state.kind === "ready" ? (
+          <>
+            <SectionTitle>Active Jobs</SectionTitle>
+            {active.length === 0 ? (
+              <Text className="text-sm text-foreground-muted">No active Jobs.</Text>
+            ) : (
+              active.map((job) => (
+                <ListRow
+                  key={job.id}
+                  title={job.name}
+                  lines={jobLines(job)}
+                  onPress={() =>
+                    navigation.navigate("AutomationJob", { jobId: job.id, name: job.name })
+                  }
+                />
+              ))
+            )}
+            <SectionTitle>Archived Jobs</SectionTitle>
+            {archived.length === 0 ? (
+              <Text className="text-sm text-foreground-muted">No archived Jobs.</Text>
+            ) : (
+              archived.map((job) => (
+                <ListRow
+                  key={job.id}
+                  title={job.name}
+                  lines={jobLines(job)}
+                  onPress={() =>
+                    navigation.navigate("AutomationJob", { jobId: job.id, name: job.name })
+                  }
+                />
+              ))
+            )}
+          </>
+        ) : null}
+      </ScrollView>
+    </>
   );
 }
