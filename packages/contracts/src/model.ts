@@ -132,6 +132,7 @@ const CLAUDE_DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
 const CURSOR_DRIVER_KIND = ProviderDriverKind.make("cursor");
 const GROK_DRIVER_KIND = ProviderDriverKind.make("grok");
 const OPENCODE_DRIVER_KIND = ProviderDriverKind.make("opencode");
+const OPENCODE2_DRIVER_KIND = ProviderDriverKind.make("opencode2");
 
 export const DEFAULT_MODEL = "gpt-5.6-sol";
 
@@ -153,6 +154,9 @@ export const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderDriverKind, strin
   [CURSOR_DRIVER_KIND]: "auto",
   [GROK_DRIVER_KIND]: "grok-build",
   [OPENCODE_DRIVER_KIND]: "openai/gpt-5",
+  // OpenCode 2 has a live server-side default (`model.default`); this entry
+  // is only the client-side fallback before the live inventory arrives.
+  [OPENCODE2_DRIVER_KIND]: "openai/gpt-5",
 };
 
 /** Per-provider text generation model defaults. */

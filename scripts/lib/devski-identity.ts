@@ -11,11 +11,21 @@ export const DEVSKI_IDENTITY = {
   slug: "devski",
   expoOwner: "onnokleinhofmeijer",
   gatewayUrl: "https://devski.onkie.dev",
+  legalOrigin: "https://devski.onkie.dev",
+  supportUrl: "https://devski.onkie.dev/support",
   scheme: "devski",
+  marketingVersion: "0.1.0",
   iosBundleIdentifier: "dev.onkie.devski",
   iosAppGroupIdentifier: "group.dev.onkie.devski",
   iosShareExtensionSuffix: "sharing",
   iosWidgetExtensionSuffix: "widgets",
+  appleTeamId: "5Q5AZ5596L",
+  // These remain empty until their external records exist. Keeping the empty
+  // values here stops Expo and EAS from silently inheriting upstream identity.
+  easProjectId: null as string | null,
+  appStoreConnectAppId: null as string | null,
+  updateUrl: null as string | null,
+  associatedDomains: [] as ReadonlyArray<string>,
 } as const;
 
 export const DEVSKI_GATEWAY_URL: string = DEVSKI_IDENTITY.gatewayUrl;

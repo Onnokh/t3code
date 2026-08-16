@@ -12,7 +12,7 @@ manifest in `scripts/lib/devski-identity.ts`.
 - Production widget extension: `dev.onkie.devski.widgets`
 - Gateway: `https://devski.onkie.dev`
 - OTA updates: disabled
-- Release workflow: `.github/workflows/devski-ios-release.yml`
+- Release workflow: `.github/workflows/devski-ios.yml`
 - Protected GitHub environment: `devski-production`
 
 The release workflow is manual, requires the literal `RELEASE_DEVSKI`

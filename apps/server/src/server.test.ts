@@ -1477,6 +1477,56 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("serves per-Agent-Runtime health on the private probe without requiring auth", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          providerRegistry: {
+            getProviders: Effect.succeed([
+              {
+                instanceId: ProviderInstanceId.make("claude"),
+                driver: ProviderDriverKind.make("claudeAgent"),
+                enabled: true,
+                installed: true,
+                version: "2.1.231",
+                status: "error" as const,
+                auth: { status: "unauthenticated" as const },
+                checkedAt: "2026-08-15T00:00:00.000Z",
+                models: [],
+                slashCommands: [],
+                skills: [],
+              },
+              {
+                instanceId: ProviderInstanceId.make("opencode2"),
+                driver: ProviderDriverKind.make("opencode2"),
+                enabled: true,
+                installed: true,
+                version: "0.0.0-next-17199",
+                status: "ready" as const,
+                auth: { status: "authenticated" as const },
+                checkedAt: "2026-08-15T00:00:00.000Z",
+                models: [],
+                slashCommands: [],
+                skills: [],
+              },
+            ]),
+          },
+        },
+      });
+
+      const url = yield* getHttpServerUrl("/healthz/agent-runtimes");
+      const response = yield* fetchEffect(url);
+      const body = yield* responseJsonEffect<{
+        readonly runtimes: { readonly claude: string; readonly opencode2: string };
+      }>(response);
+
+      assert.equal(response.status, 200);
+      // A Claude failure stays distinguishable from a healthy OpenCode 2
+      // runtime through the probe the Devski Gateway consumes.
+      assert.deepEqual(body, { runtimes: { claude: "error", opencode2: "ready" } });
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("compresses large JSON responses through the composed routes", () =>
     Effect.gen(function* () {
       const descriptor = {
@@ -1612,12 +1662,17 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const sessionBody = yield* responseJsonEffect<{
         readonly authenticated: boolean;
         readonly sessionMethod?: string;
+        readonly sessionId?: string;
         readonly scopes?: ReadonlyArray<string>;
       }>(sessionResponse);
 
       assert.equal(sessionResponse.status, 200);
       assert.equal(sessionBody.authenticated, true);
       assert.equal(sessionBody.sessionMethod, "bearer-access-token");
+      // Companion services (the Devski Gateway) bind notification
+      // registrations to this stable session identity.
+      assert.equal(typeof sessionBody.sessionId, "string");
+      assert.ok((sessionBody.sessionId ?? "").length > 0);
       assert.deepEqual(sessionBody.scopes, [
         "orchestration:read",
         "orchestration:operate",
@@ -3349,6 +3404,133 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(typeof wsTicketBody.ticket, "string");
       assert.isTrue(wsTicketBody.ticket.length > 0);
       assert.equal(typeof wsTicketBody.expiresAt, "string");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("closes an established websocket promptly when its session is revoked", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const adminToken = yield* getAuthenticatedBearerSessionToken();
+      const deviceToken = yield* getAuthenticatedBearerSessionToken();
+
+      const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
+      const deviceSessionResponse = yield* fetchEffect(sessionUrl, {
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      const deviceSessionBody = yield* responseJsonEffect<{
+        readonly authenticated: boolean;
+        readonly sessionId?: string;
+      }>(deviceSessionResponse);
+      assert.equal(deviceSessionBody.authenticated, true);
+      assert.equal(typeof deviceSessionBody.sessionId, "string");
+
+      const wsTicketUrl = yield* getHttpServerUrl("/api/auth/websocket-ticket");
+      const wsTicketResponse = yield* fetchEffect(wsTicketUrl, {
+        method: "POST",
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      const wsTicketBody = yield* responseJsonEffect<{ readonly ticket: string }>(wsTicketResponse);
+      assert.equal(wsTicketResponse.status, 200);
+
+      const wsUrl = `${yield* getWsServerUrl("/ws", { authenticated: false })}?wsTicket=${encodeURIComponent(wsTicketBody.ticket)}`;
+      const socket = yield* Effect.acquireRelease(
+        Effect.callback<NodeSocket.NodeWS.WebSocket, Error>((resume) => {
+          const candidate = new NodeSocket.NodeWS.WebSocket(wsUrl);
+          candidate.on("open", () => resume(Effect.succeed(candidate)));
+          candidate.on("error", (error) => resume(Effect.fail(error)));
+        }),
+        (openSocket) => Effect.sync(() => openSocket.close()),
+      );
+      // Register the close listener before revoking so the transition is
+      // observed no matter how quickly the server tears the socket down.
+      const closed = new Promise<void>((resolve) => {
+        socket.on("close", () => resolve());
+      });
+
+      const revokeUrl = yield* getHttpServerUrl("/api/auth/clients/revoke");
+      const revokeResponse = yield* fetchEffect(revokeUrl, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${adminToken}`,
+          "content-type": "application/json",
+        },
+        body: jsonRequestBody({ sessionId: deviceSessionBody.sessionId }),
+      });
+      const revokeBody = yield* responseJsonEffect<{ readonly revoked: boolean }>(revokeResponse);
+      assert.equal(revokeResponse.status, 200);
+      assert.equal(revokeBody.revoked, true);
+
+      // Prompt closure: the revocation event, not the 30s recheck, must end
+      // the established connection.
+      yield* Effect.promise(() => closed).pipe(
+        Effect.timeoutOrElse({
+          duration: "10 seconds",
+          orElse: () =>
+            Effect.die(new Error("Expected the established websocket to close after revocation.")),
+        }),
+      );
+
+      // The revoked session is also rejected for subsequent HTTP and tickets.
+      const revokedSessionResponse = yield* fetchEffect(sessionUrl, {
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      const revokedSessionBody = yield* responseJsonEffect<{ readonly authenticated: boolean }>(
+        revokedSessionResponse,
+      );
+      assert.equal(revokedSessionBody.authenticated, false);
+      const revokedTicketResponse = yield* fetchEffect(wsTicketUrl, {
+        method: "POST",
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      assert.equal(revokedTicketResponse.status, 401);
+    }).pipe(Effect.scoped, Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("lets a standard-scope session sign itself out without access:write", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const { response: exchangeResponse, body: tokenBody } = yield* exchangeAccessToken(
+        defaultDesktopBootstrapToken,
+        { scope: "orchestration:read orchestration:operate" },
+      );
+      assert.equal(exchangeResponse.status, 200);
+      const deviceToken = tokenBody.access_token ?? "";
+      assert.isTrue(deviceToken.length > 0);
+
+      // The scoped revoke endpoint refuses this session (no access:write),
+      // so self sign-out must not depend on it.
+      const revokeUrl = yield* getHttpServerUrl("/api/auth/clients/revoke-others");
+      const forbiddenResponse = yield* fetchEffect(revokeUrl, {
+        method: "POST",
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      assert.equal(forbiddenResponse.status, 403);
+
+      const signOutUrl = yield* getHttpServerUrl("/api/auth/sign-out");
+      const signOutResponse = yield* fetchEffect(signOutUrl, {
+        method: "POST",
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      const signOutBody = yield* responseJsonEffect<{ readonly revoked: boolean }>(signOutResponse);
+      assert.equal(signOutResponse.status, 200);
+      assert.equal(signOutBody.revoked, true);
+
+      const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
+      const afterSignOutResponse = yield* fetchEffect(sessionUrl, {
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      const afterSignOutBody = yield* responseJsonEffect<{ readonly authenticated: boolean }>(
+        afterSignOutResponse,
+      );
+      assert.equal(afterSignOutBody.authenticated, false);
+
+      const repeatSignOutResponse = yield* fetchEffect(signOutUrl, {
+        method: "POST",
+        headers: { authorization: `Bearer ${deviceToken}` },
+      });
+      assert.equal(repeatSignOutResponse.status, 401);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

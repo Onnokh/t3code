@@ -11,6 +11,7 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
 import * as ServerConfig from "./config.ts";
 import {
+  agentRuntimeHealthRouteLayer,
   otlpTracesProxyRouteLayer,
   assetRouteLayer,
   serverEnvironmentHttpApiLayer,
@@ -449,6 +450,7 @@ export const makeRoutesLayer = Layer.mergeAll(
       Layer.provide(serverEnvironmentHttpApiLayer),
       Layer.provide(environmentAuthenticatedAuthLayer),
     ),
+    agentRuntimeHealthRouteLayer,
     otlpTracesProxyRouteLayer,
     assetRouteLayer,
     staticAndDevRouteLayer,

@@ -20,6 +20,7 @@ permissions:
 jobs:
   collect-targets:
     name: Collect PR targets
+    if: github.repository == 'pingdotgg/t3code'
     runs-on: ubuntu-24.04
     outputs:
       targets: ${{ steps.collect.outputs.targets }}
@@ -65,7 +66,7 @@ jobs:
   label:
     name: Label PR ${{ matrix.target.number }}
     needs: collect-targets
-    if: ${{ needs.collect-targets.outputs.targets != '[]' }}
+    if: ${{ github.repository == 'pingdotgg/t3code' && needs.collect-targets.outputs.targets != '[]' }}
     runs-on: ubuntu-24.04
     concurrency:
       group: pr-vouch-${{ matrix.target.number }}

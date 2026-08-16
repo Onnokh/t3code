@@ -2,7 +2,7 @@ import type { ServerConfig } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 
 import type { ConnectionCatalogEntry } from "./catalog.ts";
-import type { NetworkStatus, SupervisorConnectionState } from "./model.ts";
+import type { ConnectionAttemptError, NetworkStatus, SupervisorConnectionState } from "./model.ts";
 
 export type EnvironmentConnectionPhase =
   | "available"
@@ -16,6 +16,7 @@ export interface EnvironmentConnectionPresentation {
   readonly phase: EnvironmentConnectionPhase;
   readonly error: string | null;
   readonly traceId: string | null;
+  readonly failureReason?: ConnectionAttemptError["reason"] | null;
 }
 
 export interface EnvironmentPresentation {
@@ -29,28 +30,31 @@ export function presentConnectionState(
 ): EnvironmentConnectionPresentation {
   switch (state.phase) {
     case "available":
-      return { phase: "available", error: null, traceId: null };
+      return { phase: "available", error: null, traceId: null, failureReason: null };
     case "offline":
-      return { phase: "offline", error: null, traceId: null };
+      return { phase: "offline", error: null, traceId: null, failureReason: null };
     case "connecting":
       return {
         phase: state.attempt <= 1 && state.lastFailure === null ? "connecting" : "reconnecting",
         error: state.lastFailure?.message ?? null,
         traceId: state.lastFailure?.traceId ?? null,
+        failureReason: state.lastFailure?.reason ?? null,
       };
     case "connected":
-      return { phase: "connected", error: null, traceId: null };
+      return { phase: "connected", error: null, traceId: null, failureReason: null };
     case "backoff":
       return {
         phase: "reconnecting",
         error: state.lastFailure?.message ?? null,
         traceId: state.lastFailure?.traceId ?? null,
+        failureReason: state.lastFailure?.reason ?? null,
       };
     case "blocked":
       return {
         phase: "error",
         error: state.lastFailure?.message ?? null,
         traceId: state.lastFailure?.traceId ?? null,
+        failureReason: state.lastFailure?.reason ?? null,
       };
   }
 }

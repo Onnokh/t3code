@@ -1010,9 +1010,11 @@ export const make = Effect.gen(function* () {
       return {
         viewers: viewers as PullRequestListResult["viewers"],
         providers,
+        // .sort() on the flatMap() copy, not .toSorted(): kept to the
+        // workspace convention because Hermes doesn't ship the ES2023 method.
         entries: batches
           .flatMap((batch) => batch.entries)
-          .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+          .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
         errors: [...unreadable, ...batches.flatMap((batch) => batch.errors)],
         truncated: batches.some((batch) => batch.truncated),
         nextCursors,
@@ -1840,7 +1842,9 @@ export const make = Effect.gen(function* () {
       input.query ?? null,
       input.cursors === undefined
         ? null
-        : Object.entries(input.cursors).toSorted(([left], [right]) => left.localeCompare(right)),
+        : // .sort() on the entries() copy, not .toSorted(): kept to the
+          // workspace convention because Hermes doesn't ship the ES2023 method.
+          Object.entries(input.cursors).sort(([left], [right]) => left.localeCompare(right)),
     ]);
     return staleList(key, Cache.get(listCache, key));
   };
@@ -1950,9 +1954,11 @@ export const make = Effect.gen(function* () {
     if (input.refs.length === 0) return Effect.succeed({ stats: [] });
     const key = JSON.stringify([
       listingsEpoch,
+      // .sort() on the map() copy, not .toSorted(): kept to the workspace
+      // convention because Hermes doesn't ship the ES2023 method.
       input.refs
         .map((ref) => [ref.projectId, ref.repository, ref.number] as const)
-        .toSorted((left, right) =>
+        .sort((left, right) =>
           `${left[0]} ${left[1]} ${left[2]}`.localeCompare(`${right[0]} ${right[1]} ${right[2]}`),
         ),
     ]);

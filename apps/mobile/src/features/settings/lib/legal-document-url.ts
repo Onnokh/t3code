@@ -1,4 +1,6 @@
-const DEFAULT_MARKETING_SITE_URL = "https://t3.codes";
+import { DEVSKI_IDENTITY } from "../../../lib/devski";
+
+const DEFAULT_MARKETING_SITE_URL = DEVSKI_IDENTITY.legalOrigin;
 
 function resolveMarketingSiteUrl(override: string | undefined): URL {
   try {

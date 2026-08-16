@@ -7,25 +7,36 @@ vi.mock("react-native", () => ({
 }));
 
 vi.mock("expo-secure-store", () => ({
+  WHEN_UNLOCKED_THIS_DEVICE_ONLY: "WHEN_UNLOCKED_THIS_DEVICE_ONLY",
   deleteItemAsync: vi.fn(),
   getItemAsync: vi.fn(),
   setItemAsync: vi.fn(),
 }));
 
-import { CONNECTION_CATALOG_KEY, LEGACY_CONNECTIONS_KEY, make } from "./catalog-store";
+import {
+  CONNECTION_CATALOG_KEY,
+  LEGACY_CONNECTIONS_KEY,
+  make,
+  PREVIOUS_CONNECTION_CATALOG_KEY,
+} from "./catalog-store";
 import { MobileSecureStorage } from "../persistence/mobile-secure-storage";
 
-function makeStorage(initial: Readonly<Record<string, string>>) {
+function makeStorage(
+  initial: Readonly<Record<string, string>>,
+  failures: { readonly write?: string; readonly delete?: string } = {},
+) {
   const values = new Map(Object.entries(initial));
   const deleted: Array<string> = [];
   const storage = MobileSecureStorage.of({
     getItem: (key) => Effect.sync(() => values.get(key) ?? null),
     setItem: (key, value) =>
       Effect.sync(() => {
+        if (failures.write === key) throw new Error("write failed");
         values.set(key, value);
       }),
     removeItem: (key) =>
       Effect.sync(() => {
+        if (failures.delete === key) throw new Error("delete failed");
         deleted.push(key);
         values.delete(key);
       }),
@@ -34,6 +45,71 @@ function makeStorage(initial: Readonly<Record<string, string>>) {
 }
 
 describe("mobile connection catalog storage", () => {
+  it.effect("moves the prior catalog key into device-only storage", () =>
+    Effect.gen(function* () {
+      const previousCatalog = JSON.stringify({
+        schemaVersion: 1,
+        targets: [],
+        profiles: [],
+        credentials: [],
+        remoteDpopTokens: [],
+      });
+      const memory = makeStorage({ [PREVIOUS_CONNECTION_CATALOG_KEY]: previousCatalog });
+      const catalog = yield* make().pipe(
+        Effect.provideService(MobileSecureStorage, memory.storage),
+      );
+
+      expect((yield* catalog.read).targets).toEqual([]);
+      expect(memory.values.has(CONNECTION_CATALOG_KEY)).toBe(true);
+      expect(memory.values.has(PREVIOUS_CONNECTION_CATALOG_KEY)).toBe(false);
+      expect(memory.deleted).toEqual([PREVIOUS_CONNECTION_CATALOG_KEY]);
+    }),
+  );
+
+  it.effect("keeps the prior catalog when the device-only write fails", () =>
+    Effect.gen(function* () {
+      const previousCatalog = JSON.stringify({
+        schemaVersion: 1,
+        targets: [],
+        profiles: [],
+        credentials: [],
+        remoteDpopTokens: [],
+      });
+      const memory = makeStorage(
+        { [PREVIOUS_CONNECTION_CATALOG_KEY]: previousCatalog },
+        { write: CONNECTION_CATALOG_KEY },
+      );
+      const catalog = yield* make().pipe(
+        Effect.provideService(MobileSecureStorage, memory.storage),
+      );
+
+      expect(yield* Effect.exit(catalog.read)).toMatchObject({ _tag: "Failure" });
+      expect(memory.values.get(PREVIOUS_CONNECTION_CATALOG_KEY)).toBe(previousCatalog);
+      expect(memory.deleted).toEqual([]);
+    }),
+  );
+
+  it.effect("retries prior-key cleanup after the device-only write succeeds", () =>
+    Effect.gen(function* () {
+      const previousCatalog = JSON.stringify({
+        schemaVersion: 1,
+        targets: [],
+        profiles: [],
+        credentials: [],
+        remoteDpopTokens: [],
+      });
+      const memory = makeStorage(
+        { [PREVIOUS_CONNECTION_CATALOG_KEY]: previousCatalog },
+        { delete: PREVIOUS_CONNECTION_CATALOG_KEY },
+      );
+      const first = yield* make().pipe(Effect.provideService(MobileSecureStorage, memory.storage));
+
+      expect(yield* Effect.exit(first.read)).toMatchObject({ _tag: "Failure" });
+      expect(memory.values.has(CONNECTION_CATALOG_KEY)).toBe(true);
+      expect(memory.values.has(PREVIOUS_CONNECTION_CATALOG_KEY)).toBe(true);
+    }),
+  );
+
   it.effect("recovers from a corrupt current catalog", () =>
     Effect.gen(function* () {
       const memory = makeStorage({
