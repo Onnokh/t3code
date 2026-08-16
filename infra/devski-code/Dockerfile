@@ -79,7 +79,9 @@ EXPOSE 3773
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:3773/.well-known/t3/environment').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 
-# `serve` runs headless and prints one-time pairing details to the log on
-# first boot. Mint later pairing credentials with:
-#   node apps/server/src/bin.ts pair --base-dir /data/t3
+# `serve` runs headless and prints one-shot pairing details to the log on
+# first boot. Mint later pairing credentials with the auth control plane —
+# `t3 pair` discovers servers through a runtime-state file this deployment does
+# not have (see infra/devski-code/README.md):
+#   node apps/server/src/bin.ts auth pairing create --base-dir /data/t3 --label iphone
 CMD ["node", "apps/server/src/bin.ts", "serve", "--host", "0.0.0.0", "--port", "3773", "--base-dir", "/data/t3"]
