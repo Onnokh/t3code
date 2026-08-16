@@ -31,7 +31,8 @@ import {
   type AutomationsStackParamList,
   type ModelCatalog,
 } from "./automations-state";
-import { ChoiceRow, PlainButton, SectionTitle } from "./AutomationsUi";
+import { NativeHeaderToolbar } from "../../../native/StackHeader";
+import { ChoiceRow, SectionTitle } from "./AutomationsUi";
 
 type Params = { readonly jobId: string } | undefined;
 
@@ -316,292 +317,301 @@ export function AutomationJobEditorScreen({ route }: StaticScreenProps<Params>) 
       : new Set<string>();
 
   return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      className="flex-1 bg-screen"
-      contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
-      keyboardShouldPersistTaps="handled"
-    >
-      {banner ? <ErrorBanner message={banner} /> : null}
-      <Text className="font-t3-bold text-xl text-foreground">
-        {editing ? `Edit ${base.job?.name ?? "Job"}` : "New Job"}
-      </Text>
-      {editing ? (
-        <Text className="text-xs text-foreground-muted">
-          Editing revision {base.job?.revision}. A newer server revision blocks this save.
+    <>
+      {/* The form's one confirming action. In the navigation bar it is
+          reachable from any field, instead of only from the bottom of a
+          form this long. */}
+      <NativeHeaderToolbar placement="right">
+        <NativeHeaderToolbar.Button
+          accessibilityLabel={editing ? "Save Job" : "Create Job"}
+          label={editing ? "Save" : "Create"}
+          disabled={saving}
+          onPress={() => void onSave()}
+          separateBackground
+        />
+      </NativeHeaderToolbar>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        className="flex-1 bg-screen"
+        contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {saving ? <Text className="text-sm text-foreground-muted">Saving Job…</Text> : null}
+        {banner ? <ErrorBanner message={banner} /> : null}
+        <Text className="font-t3-bold text-xl text-foreground">
+          {editing ? `Edit ${base.job?.name ?? "Job"}` : "New Job"}
         </Text>
-      ) : null}
-
-      {!editing ? (
-        <>
-          <SectionTitle>Job type</SectionTitle>
-          <ChoiceRow
-            label="Agent Job"
-            detail="An OpenCode prompt"
-            selected={draft.kind === "agent"}
-            onPress={() => patch({ kind: "agent" })}
-          />
-          <ChoiceRow
-            label="Command Job"
-            detail="A shell command that invokes a Tool"
-            selected={draft.kind === "command"}
-            onPress={() => patch({ kind: "command" })}
-          />
-        </>
-      ) : null}
-
-      <SectionTitle>Name</SectionTitle>
-      <Input
-        value={draft.name}
-        onChangeText={(name) => patch({ name })}
-        placeholder="daily-report"
-      />
-      <FieldProblem message={problems.name} />
-
-      <SectionTitle>{draft.kind === "agent" ? "Prompt" : "Command"}</SectionTitle>
-      {draft.kind === "agent" ? (
-        <>
-          <Input
-            value={draft.prompt}
-            onChangeText={(prompt) => patch({ prompt })}
-            placeholder="What should the agent do each Run?"
-            multiline
-          />
-          <FieldProblem message={problems.prompt ?? problems.work} />
-        </>
-      ) : (
-        <>
-          <Input
-            value={draft.command}
-            onChangeText={(command) => patch({ command })}
-            placeholder="sleevy-seo-daily"
-            multiline
-            monospace
-          />
-          <FieldProblem message={problems.command ?? problems.work} />
+        {editing ? (
           <Text className="text-xs text-foreground-muted">
-            The command runs exactly as written in a restricted worker with only the selected Secret
-            References. Saving a new or changed command asks for review first.
+            Editing revision {base.job?.revision}. A newer server revision blocks this save.
           </Text>
-        </>
-      )}
+        ) : null}
 
-      {draft.kind === "agent" ? (
-        <>
-          <SectionTitle>Model</SectionTitle>
-          {models.kind === "loading" ? (
-            <Text className="text-sm text-foreground-muted">Loading live model choices…</Text>
-          ) : null}
-          {models.kind === "unavailable" ? (
-            <Text className="text-sm text-foreground-muted">
-              The live model catalog is unavailable ({models.message}). The server default is used
-              unless the Job already names a model.
-            </Text>
-          ) : null}
-          <ChoiceRow
-            label="Server default"
-            detail={
-              models.kind === "ready" && models.catalog.defaultModel
-                ? `Currently ${models.catalog.defaultModel}`
-                : "OpenCode picks its default at Run start"
-            }
-            selected={draft.model === ""}
-            onPress={() => patch({ model: "" })}
-          />
-          {models.kind === "ready"
-            ? models.catalog.models.map((choice) => (
-                <ChoiceRow
-                  key={choice.id}
-                  label={choice.name}
-                  detail={choice.id}
-                  selected={draft.model === choice.id}
-                  onPress={() => patch({ model: choice.id })}
-                />
-              ))
-            : null}
-          {draft.model !== "" && !knownModelIds.has(draft.model) ? (
+        {!editing ? (
+          <>
+            <SectionTitle>Job type</SectionTitle>
             <ChoiceRow
-              label={draft.model}
-              detail="Not in the current catalog; this Job cannot Trigger until it is available again"
-              selected
+              label="Agent Job"
+              detail="An OpenCode prompt"
+              selected={draft.kind === "agent"}
+              onPress={() => patch({ kind: "agent" })}
+            />
+            <ChoiceRow
+              label="Command Job"
+              detail="A shell command that invokes a Tool"
+              selected={draft.kind === "command"}
+              onPress={() => patch({ kind: "command" })}
+            />
+          </>
+        ) : null}
+
+        <SectionTitle>Name</SectionTitle>
+        <Input
+          value={draft.name}
+          onChangeText={(name) => patch({ name })}
+          placeholder="daily-report"
+        />
+        <FieldProblem message={problems.name} />
+
+        <SectionTitle>{draft.kind === "agent" ? "Prompt" : "Command"}</SectionTitle>
+        {draft.kind === "agent" ? (
+          <>
+            <Input
+              value={draft.prompt}
+              onChangeText={(prompt) => patch({ prompt })}
+              placeholder="What should the agent do each Run?"
+              multiline
+            />
+            <FieldProblem message={problems.prompt ?? problems.work} />
+          </>
+        ) : (
+          <>
+            <Input
+              value={draft.command}
+              onChangeText={(command) => patch({ command })}
+              placeholder="sleevy-seo-daily"
+              multiline
+              monospace
+            />
+            <FieldProblem message={problems.command ?? problems.work} />
+            <Text className="text-xs text-foreground-muted">
+              The command runs exactly as written in a restricted worker with only the selected
+              Secret References. Saving a new or changed command asks for review first.
+            </Text>
+          </>
+        )}
+
+        {draft.kind === "agent" ? (
+          <>
+            <SectionTitle>Model</SectionTitle>
+            {models.kind === "loading" ? (
+              <Text className="text-sm text-foreground-muted">Loading live model choices…</Text>
+            ) : null}
+            {models.kind === "unavailable" ? (
+              <Text className="text-sm text-foreground-muted">
+                The live model catalog is unavailable ({models.message}). The server default is used
+                unless the Job already names a model.
+              </Text>
+            ) : null}
+            <ChoiceRow
+              label="Server default"
+              detail={
+                models.kind === "ready" && models.catalog.defaultModel
+                  ? `Currently ${models.catalog.defaultModel}`
+                  : "OpenCode picks its default at Run start"
+              }
+              selected={draft.model === ""}
               onPress={() => patch({ model: "" })}
             />
-          ) : null}
-          <FieldProblem message={problems.model} />
-        </>
-      ) : null}
+            {models.kind === "ready"
+              ? models.catalog.models.map((choice) => (
+                  <ChoiceRow
+                    key={choice.id}
+                    label={choice.name}
+                    detail={choice.id}
+                    selected={draft.model === choice.id}
+                    onPress={() => patch({ model: choice.id })}
+                  />
+                ))
+              : null}
+            {draft.model !== "" && !knownModelIds.has(draft.model) ? (
+              <ChoiceRow
+                label={draft.model}
+                detail="Not in the current catalog; this Job cannot Trigger until it is available again"
+                selected
+                onPress={() => patch({ model: "" })}
+              />
+            ) : null}
+            <FieldProblem message={problems.model} />
+          </>
+        ) : null}
 
-      <SectionTitle>Trigger</SectionTitle>
-      <ChoiceRow
-        label="Manual only"
-        detail="Runs only when you tap Run Now"
-        selected={draft.triggerKind === "manual"}
-        onPress={() => patch({ triggerKind: "manual" })}
-      />
-      <ChoiceRow
-        label="One-shot"
-        detail="Runs once at a future instant"
-        selected={draft.triggerKind === "oneShot"}
-        onPress={() => patch({ triggerKind: "oneShot" })}
-      />
-      <ChoiceRow
-        label="Recurring"
-        detail="Runs on a schedule; new schedules start disabled"
-        selected={draft.triggerKind === "recurring"}
-        onPress={() => patch({ triggerKind: "recurring" })}
-      />
-      <FieldProblem message={problems.trigger} />
+        <SectionTitle>Trigger</SectionTitle>
+        <ChoiceRow
+          label="Manual only"
+          detail="Runs only when you tap Run Now"
+          selected={draft.triggerKind === "manual"}
+          onPress={() => patch({ triggerKind: "manual" })}
+        />
+        <ChoiceRow
+          label="One-shot"
+          detail="Runs once at a future instant"
+          selected={draft.triggerKind === "oneShot"}
+          onPress={() => patch({ triggerKind: "oneShot" })}
+        />
+        <ChoiceRow
+          label="Recurring"
+          detail="Runs on a schedule; new schedules start disabled"
+          selected={draft.triggerKind === "recurring"}
+          onPress={() => patch({ triggerKind: "recurring" })}
+        />
+        <FieldProblem message={problems.trigger} />
 
-      {draft.triggerKind === "oneShot" ? (
-        <>
-          <Label>Run at (ISO-8601 instant)</Label>
-          <Input
-            value={draft.runAt}
-            onChangeText={(runAt) => patch({ runAt })}
-            placeholder="2026-09-01T09:00:00+02:00"
-            monospace
-          />
-          <FieldProblem message={problems.runAt} />
-        </>
-      ) : null}
-
-      {draft.triggerKind === "recurring" ? (
-        <>
-          <Label>Repeats</Label>
-          {RECURRENCE_PRESETS.map((option) => (
-            <ChoiceRow
-              key={option.preset}
-              label={option.label}
-              selected={draft.recurrencePreset === option.preset}
-              onPress={() => patch({ recurrencePreset: option.preset })}
+        {draft.triggerKind === "oneShot" ? (
+          <>
+            <Label>Run at (ISO-8601 instant)</Label>
+            <Input
+              value={draft.runAt}
+              onChangeText={(runAt) => patch({ runAt })}
+              placeholder="2026-09-01T09:00:00+02:00"
+              monospace
             />
-          ))}
-          {draft.recurrencePreset === "weekly" ? (
-            <>
-              <Label>On</Label>
-              {WEEKDAY_NAMES.map((day, index) => (
-                <ChoiceRow
-                  key={day}
-                  label={day}
-                  selected={draft.recurrenceWeekday === index}
-                  onPress={() => patch({ recurrenceWeekday: index })}
+            <FieldProblem message={problems.runAt} />
+          </>
+        ) : null}
+
+        {draft.triggerKind === "recurring" ? (
+          <>
+            <Label>Repeats</Label>
+            {RECURRENCE_PRESETS.map((option) => (
+              <ChoiceRow
+                key={option.preset}
+                label={option.label}
+                selected={draft.recurrencePreset === option.preset}
+                onPress={() => patch({ recurrencePreset: option.preset })}
+              />
+            ))}
+            {draft.recurrencePreset === "weekly" ? (
+              <>
+                <Label>On</Label>
+                {WEEKDAY_NAMES.map((day, index) => (
+                  <ChoiceRow
+                    key={day}
+                    label={day}
+                    selected={draft.recurrenceWeekday === index}
+                    onPress={() => patch({ recurrenceWeekday: index })}
+                  />
+                ))}
+              </>
+            ) : null}
+            {draft.recurrencePreset === "hourly" ? (
+              <>
+                <Label>At minute (via HH:MM, the minute part is used)</Label>
+                <Input
+                  value={draft.recurrenceTime}
+                  onChangeText={(recurrenceTime) => patch({ recurrenceTime })}
+                  placeholder="00:15"
+                  monospace
                 />
-              ))}
-            </>
-          ) : null}
-          {draft.recurrencePreset === "hourly" ? (
-            <>
-              <Label>At minute (via HH:MM, the minute part is used)</Label>
-              <Input
-                value={draft.recurrenceTime}
-                onChangeText={(recurrenceTime) => patch({ recurrenceTime })}
-                placeholder="00:15"
-                monospace
-              />
-            </>
-          ) : null}
-          {draft.recurrencePreset === "daily" || draft.recurrencePreset === "weekly" ? (
-            <>
-              <Label>At time (HH:MM)</Label>
-              <Input
-                value={draft.recurrenceTime}
-                onChangeText={(recurrenceTime) => patch({ recurrenceTime })}
-                placeholder="09:00"
-                monospace
-              />
-            </>
-          ) : null}
-          <Label>Advanced cron</Label>
-          <Input
-            value={derivedCron}
-            onChangeText={(cron) => patch({ cron, recurrencePreset: "custom" })}
-            placeholder="0 9 * * *"
-            monospace
-          />
-          <FieldProblem message={problems.cron} />
-        </>
-      ) : null}
-
-      {draft.triggerKind !== "manual" ? (
-        <>
-          <Label>Timezone (IANA)</Label>
-          {TIMEZONE_CHOICES.map((zone) => (
-            <ChoiceRow
-              key={zone}
-              label={zone}
-              selected={draft.timezone === zone}
-              onPress={() => patch({ timezone: zone })}
+              </>
+            ) : null}
+            {draft.recurrencePreset === "daily" || draft.recurrencePreset === "weekly" ? (
+              <>
+                <Label>At time (HH:MM)</Label>
+                <Input
+                  value={draft.recurrenceTime}
+                  onChangeText={(recurrenceTime) => patch({ recurrenceTime })}
+                  placeholder="09:00"
+                  monospace
+                />
+              </>
+            ) : null}
+            <Label>Advanced cron</Label>
+            <Input
+              value={derivedCron}
+              onChangeText={(cron) => patch({ cron, recurrencePreset: "custom" })}
+              placeholder="0 9 * * *"
+              monospace
             />
-          ))}
-          <Input
-            value={draft.timezone}
-            onChangeText={(timezone) => patch({ timezone })}
-            placeholder="Europe/Amsterdam"
-          />
-          <FieldProblem message={problems.timezone} />
-        </>
-      ) : null}
+            <FieldProblem message={problems.cron} />
+          </>
+        ) : null}
 
-      <SectionTitle>Timeout (minutes)</SectionTitle>
-      <Input
-        value={draft.timeoutMinutes}
-        onChangeText={(timeoutMinutes) => patch({ timeoutMinutes })}
-        placeholder="30"
-        keyboardType="numeric"
-      />
-      <FieldProblem message={problems.timeoutMinutes} />
+        {draft.triggerKind !== "manual" ? (
+          <>
+            <Label>Timezone (IANA)</Label>
+            {TIMEZONE_CHOICES.map((zone) => (
+              <ChoiceRow
+                key={zone}
+                label={zone}
+                selected={draft.timezone === zone}
+                onPress={() => patch({ timezone: zone })}
+              />
+            ))}
+            <Input
+              value={draft.timezone}
+              onChangeText={(timezone) => patch({ timezone })}
+              placeholder="Europe/Amsterdam"
+            />
+            <FieldProblem message={problems.timezone} />
+          </>
+        ) : null}
 
-      <SectionTitle>Repository (optional)</SectionTitle>
-      <Input
-        value={draft.repositoryUrl}
-        onChangeText={(repositoryUrl) => patch({ repositoryUrl })}
-        placeholder="https://github.com/org/repo.git"
-      />
-      <FieldProblem message={problems.repositoryUrl ?? problems.repository} />
+        <SectionTitle>Timeout (minutes)</SectionTitle>
+        <Input
+          value={draft.timeoutMinutes}
+          onChangeText={(timeoutMinutes) => patch({ timeoutMinutes })}
+          placeholder="30"
+          keyboardType="numeric"
+        />
+        <FieldProblem message={problems.timeoutMinutes} />
 
-      <SectionTitle>Secret References</SectionTitle>
-      {secrets.kind === "loading" ? (
-        <Text className="text-sm text-foreground-muted">Loading Secret Reference names…</Text>
-      ) : null}
-      {secrets.kind === "unavailable" ? (
-        <Text className="text-sm text-foreground-muted">
-          Secret Reference names are unavailable ({secrets.message}).
-        </Text>
-      ) : null}
-      {secrets.kind === "ready" && secrets.names.length === 0 ? (
-        <Text className="text-sm text-foreground-muted">No Secret References are configured.</Text>
-      ) : null}
-      {secrets.kind === "ready"
-        ? secrets.names.map((name) => (
+        <SectionTitle>Repository (optional)</SectionTitle>
+        <Input
+          value={draft.repositoryUrl}
+          onChangeText={(repositoryUrl) => patch({ repositoryUrl })}
+          placeholder="https://github.com/org/repo.git"
+        />
+        <FieldProblem message={problems.repositoryUrl ?? problems.repository} />
+
+        <SectionTitle>Secret References</SectionTitle>
+        {secrets.kind === "loading" ? (
+          <Text className="text-sm text-foreground-muted">Loading Secret Reference names…</Text>
+        ) : null}
+        {secrets.kind === "unavailable" ? (
+          <Text className="text-sm text-foreground-muted">
+            Secret Reference names are unavailable ({secrets.message}).
+          </Text>
+        ) : null}
+        {secrets.kind === "ready" && secrets.names.length === 0 ? (
+          <Text className="text-sm text-foreground-muted">
+            No Secret References are configured.
+          </Text>
+        ) : null}
+        {secrets.kind === "ready"
+          ? secrets.names.map((name) => (
+              <ChoiceRow
+                key={name}
+                label={name}
+                detail="Selected by name; the value stays on the server"
+                selected={draft.secretRefs.includes(name)}
+                onPress={() => patch({ secretRefs: toggleSecretRef(draft.secretRefs, name) })}
+              />
+            ))
+          : null}
+        {draft.secretRefs
+          .filter((name) => secrets.kind === "ready" && !secrets.names.includes(name))
+          .map((name) => (
             <ChoiceRow
               key={name}
               label={name}
-              detail="Selected by name; the value stays on the server"
-              selected={draft.secretRefs.includes(name)}
+              detail="No longer available; deselect or reconfigure it on the server"
+              selected
               onPress={() => patch({ secretRefs: toggleSecretRef(draft.secretRefs, name) })}
             />
-          ))
-        : null}
-      {draft.secretRefs
-        .filter((name) => secrets.kind === "ready" && !secrets.names.includes(name))
-        .map((name) => (
-          <ChoiceRow
-            key={name}
-            label={name}
-            detail="No longer available; deselect or reconfigure it on the server"
-            selected
-            onPress={() => patch({ secretRefs: toggleSecretRef(draft.secretRefs, name) })}
-          />
-        ))}
-      <FieldProblem message={problems.secretRefs} />
-
-      <View className="mt-4 gap-2">
-        <PlainButton
-          label={saving ? "Saving…" : editing ? "Save Job" : "Create Job"}
-          disabled={saving}
-          onPress={() => void onSave()}
-        />
-      </View>
-    </ScrollView>
+          ))}
+        <FieldProblem message={problems.secretRefs} />
+      </ScrollView>
+    </>
   );
 }

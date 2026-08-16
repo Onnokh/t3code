@@ -16,6 +16,7 @@ import {
   type ArtifactSummary,
   type AutomationRun,
 } from "./automations-state";
+import { NativeHeaderToolbar } from "../../../native/StackHeader";
 import { CodeBlock, FieldRow, ListRow, PlainButton, SectionTitle } from "./AutomationsUi";
 
 type Params = { readonly runId: string };
@@ -212,102 +213,110 @@ export function AutomationRunDetailScreen({ route }: StaticScreenProps<Params>) 
   }
 
   return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      className="flex-1 bg-screen"
-      contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            void loadAll().finally(() => setRefreshing(false));
-          }}
-        />
-      }
-    >
-      {banner ? <ErrorBanner message={banner} /> : null}
-      {error ? <ErrorBanner message={error} /> : null}
-      {run === null && !error ? (
-        <Text className="text-sm text-foreground-muted">Loading Run…</Text>
-      ) : null}
-      {run ? (
-        <>
-          <Text className="font-t3-bold text-xl text-foreground">
-            {run.job} · {describeRunState(run.state)}
-          </Text>
-          <FieldRow label="Run ID" value={run.id} />
-          <FieldRow
-            label="Cause"
-            value={run.cause === "manual" ? "Manual Trigger" : "Scheduled Trigger"}
+    <>
+      {/* Stopping is this screen's one operation, so it sits in the
+          navigation bar with the Job's actions rather than between the
+          Run's fields and its log. */}
+      {run && isRunActive(run.state) ? (
+        <NativeHeaderToolbar placement="right">
+          <NativeHeaderToolbar.Button
+            accessibilityLabel="Stop Run"
+            icon="stop.fill"
+            disabled={stopping}
+            onPress={onStop}
+            separateBackground
           />
-          <FieldRow label="Requested" value={new Date(run.requestedAt).toLocaleString()} />
-          {run.startedAt ? (
-            <FieldRow label="Started" value={new Date(run.startedAt).toLocaleString()} />
-          ) : null}
-          {run.finishedAt ? (
-            <FieldRow label="Finished" value={new Date(run.finishedAt).toLocaleString()} />
-          ) : null}
-          {run.durationMs !== undefined ? (
-            <FieldRow label="Duration" value={`${Math.round(run.durationMs / 1000)}s`} />
-          ) : null}
-          {run.exitCode !== undefined ? (
-            <FieldRow label="Exit code" value={String(run.exitCode)} />
-          ) : null}
-          {run.errorSummary ? <FieldRow label="Error" value={run.errorSummary} /> : null}
-
-          {isRunActive(run.state) ? (
-            <View className="mt-2">
-              <PlainButton
-                destructive
-                label={stopping ? "Stopping…" : "Stop Run"}
-                disabled={stopping}
-                onPress={onStop}
-              />
-            </View>
-          ) : null}
-
-          <SectionTitle>Log</SectionTitle>
-          {log.trimmed ? (
-            <Text className="text-sm text-foreground-muted">
-              Older log output is hidden on this device.
-            </Text>
-          ) : null}
-          {log.truncated ? (
-            <Text className="text-sm text-foreground-muted">
-              The server truncated this log at its retention limit.
-            </Text>
-          ) : null}
-          {log.text.length > 0 ? (
-            <CodeBlock text={log.text} />
-          ) : (
-            <Text className="text-sm text-foreground-muted">
-              {isRunActive(run.state) ? "Waiting for log output…" : "No log output is available."}
-            </Text>
-          )}
-          {!log.complete && log.cursor && !isRunActive(run.state) ? (
-            <PlainButton label="Load more log output" onPress={() => void followLog()} />
-          ) : null}
-
-          <SectionTitle>Artifacts</SectionTitle>
-          {artifacts.length === 0 ? (
-            <Text className="text-sm text-foreground-muted">This Run declared no Artifacts.</Text>
-          ) : (
-            artifacts.map((artifact) => (
-              <ListRow
-                key={artifact.id}
-                title={artifact.name}
-                lines={[
-                  `${artifact.mediaType} · ${formatByteLength(artifact.byteLength)}`,
-                  `Created ${new Date(artifact.createdAt).toLocaleString()}`,
-                  "Tap to download and share.",
-                ]}
-                onPress={() => void downloadArtifact(artifact)}
-              />
-            ))
-          )}
-        </>
+        </NativeHeaderToolbar>
       ) : null}
-    </ScrollView>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        className="flex-1 bg-screen"
+        contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void loadAll().finally(() => setRefreshing(false));
+            }}
+          />
+        }
+      >
+        {banner ? <ErrorBanner message={banner} /> : null}
+        {stopping ? (
+          <Text className="text-sm text-foreground-muted">Stopping this Run…</Text>
+        ) : null}
+        {error ? <ErrorBanner message={error} /> : null}
+        {run === null && !error ? (
+          <Text className="text-sm text-foreground-muted">Loading Run…</Text>
+        ) : null}
+        {run ? (
+          <>
+            <Text className="font-t3-bold text-xl text-foreground">
+              {run.job} · {describeRunState(run.state)}
+            </Text>
+            <FieldRow label="Run ID" value={run.id} />
+            <FieldRow
+              label="Cause"
+              value={run.cause === "manual" ? "Manual Trigger" : "Scheduled Trigger"}
+            />
+            <FieldRow label="Requested" value={new Date(run.requestedAt).toLocaleString()} />
+            {run.startedAt ? (
+              <FieldRow label="Started" value={new Date(run.startedAt).toLocaleString()} />
+            ) : null}
+            {run.finishedAt ? (
+              <FieldRow label="Finished" value={new Date(run.finishedAt).toLocaleString()} />
+            ) : null}
+            {run.durationMs !== undefined ? (
+              <FieldRow label="Duration" value={`${Math.round(run.durationMs / 1000)}s`} />
+            ) : null}
+            {run.exitCode !== undefined ? (
+              <FieldRow label="Exit code" value={String(run.exitCode)} />
+            ) : null}
+            {run.errorSummary ? <FieldRow label="Error" value={run.errorSummary} /> : null}
+
+            <SectionTitle>Log</SectionTitle>
+            {log.trimmed ? (
+              <Text className="text-sm text-foreground-muted">
+                Older log output is hidden on this device.
+              </Text>
+            ) : null}
+            {log.truncated ? (
+              <Text className="text-sm text-foreground-muted">
+                The server truncated this log at its retention limit.
+              </Text>
+            ) : null}
+            {log.text.length > 0 ? (
+              <CodeBlock text={log.text} />
+            ) : (
+              <Text className="text-sm text-foreground-muted">
+                {isRunActive(run.state) ? "Waiting for log output…" : "No log output is available."}
+              </Text>
+            )}
+            {!log.complete && log.cursor && !isRunActive(run.state) ? (
+              <PlainButton label="Load more log output" onPress={() => void followLog()} />
+            ) : null}
+
+            <SectionTitle>Artifacts</SectionTitle>
+            {artifacts.length === 0 ? (
+              <Text className="text-sm text-foreground-muted">This Run declared no Artifacts.</Text>
+            ) : (
+              artifacts.map((artifact) => (
+                <ListRow
+                  key={artifact.id}
+                  title={artifact.name}
+                  lines={[
+                    `${artifact.mediaType} · ${formatByteLength(artifact.byteLength)}`,
+                    `Created ${new Date(artifact.createdAt).toLocaleString()}`,
+                    "Tap to download and share.",
+                  ]}
+                  onPress={() => void downloadArtifact(artifact)}
+                />
+              ))
+            )}
+          </>
+        ) : null}
+      </ScrollView>
+    </>
   );
 }
