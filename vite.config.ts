@@ -76,6 +76,9 @@ export default defineConfig({
     },
     rules: {
       "unicorn/no-array-sort": "off",
+      // Copy-then-mutate is the required pattern: Hermes doesn't ship the
+      // ES2023 toSorted/toReversed methods (t3code/no-hermes-incompatible-methods).
+      "unicorn/no-array-reverse": "off",
       "unicorn/consistent-function-scoping": "off",
       "oxc/no-map-spread": "off",
       "react-in-jsx-scope": "off",
@@ -119,6 +122,7 @@ export default defineConfig({
         },
       ],
       "t3code/no-global-process-runtime": "error",
+      "t3code/no-hermes-incompatible-methods": "error",
       "t3code/no-inline-schema-compile": "warn",
       "t3code/no-manual-effect-runtime-in-tests": "error",
       "t3code/namespace-node-imports": "error",

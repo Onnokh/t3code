@@ -18,6 +18,7 @@ import { DEVSKI_GATEWAY_URL } from "../../lib/devski";
 
 type ConnectionsNewRouteParams = {
   readonly mode?: string;
+  readonly returnRoute?: "Home";
 };
 
 export function ConnectionsNewRouteScreen({
@@ -126,13 +127,20 @@ export function ConnectionsNewRouteScreen({
     if (AsyncResult.isSuccess(result)) {
       if (navigation.canGoBack()) {
         navigation.goBack();
-      } else {
-        navigation.dispatch(StackActions.replace("Home"));
+      } else if (params.returnRoute) {
+        navigation.dispatch(StackActions.replace(params.returnRoute));
       }
     } else {
       setIsSubmitting(false);
     }
-  }, [codeInput, hostInput, onChangeConnectionPairingUrl, onConnectPress, navigation]);
+  }, [
+    codeInput,
+    hostInput,
+    onChangeConnectionPairingUrl,
+    onConnectPress,
+    navigation,
+    params.returnRoute,
+  ]);
 
   return (
     <View collapsable={false} className="flex-1 bg-sheet">

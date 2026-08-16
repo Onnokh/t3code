@@ -1,0 +1,55 @@
+# devski-code — pinned interactive OpenCode 2 sidecar.
+#
+# Second container of the `devski-code` service (see README.md and the
+# Digital Home deployment topology): the T3 environment reaches this server
+# privately at http://devski-opencode:4096 through the fork's bounded
+# `opencode2` provider. It is never published on a public domain.
+#
+# Version contract: the numeric prerelease below MUST equal the
+# `@opencode-ai/client` pin in `apps/server/package.json`
+# (OPENCODE2_PINNED_VERSION in `apps/server/src/provider/opencode2Runtime.ts`).
+# The provider refuses to run against any other server build, so bump the
+# CLI and client together in one reviewed change.
+#
+# Build from the repository root:
+#
+#   docker build -f infra/devski-code/Dockerfile.opencode -t devski-opencode .
+FROM oven/bun:1
+
+ENV TZ=Europe/Amsterdam \
+    BUN_INSTALL=/opt/bun-global \
+    PATH="/opt/bun-global/bin:$PATH"
+
+# git: OpenCode reads repository state inside the Code Workspace Root.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates ripgrep \
+ && rm -rf /var/lib/apt/lists/*
+
+# Pinned numeric prerelease — never the floating `next` tag. The trusted
+# postinstall selects the platform binary.
+RUN bun install -g --trust @opencode-ai/cli@0.0.0-next-17199
+
+# Interactive OpenCode state (sessions, auth, config) lives on its own
+# volume, owned by this container only.
+ENV XDG_DATA_HOME=/data/opencode/share \
+    XDG_CONFIG_HOME=/data/opencode/config \
+    XDG_STATE_HOME=/data/opencode/state \
+    XDG_CACHE_HOME=/var/cache/xdg
+
+# /data/opencode: interactive OpenCode 2 state (owner: this container).
+# /workspaces/code: the Code Workspace Root, shared with the T3 environment
+# at the identical absolute path.
+VOLUME /data/opencode
+VOLUME /workspaces/code
+
+WORKDIR /workspaces/code
+
+EXPOSE 4096
+
+# The server takes its Basic-auth password from OPENCODE_SERVER_PASSWORD
+# (Coolify secret). The same value goes into T3's opencode2 provider
+# settings as `serverPassword`.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD ["bun", "-e", "fetch('http://127.0.0.1:4096/api/health',{headers:{authorization:'Basic '+Buffer.from('opencode:'+process.env.OPENCODE_SERVER_PASSWORD).toString('base64')}}).then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+
+CMD ["opencode2", "serve", "--hostname", "0.0.0.0", "--port", "4096"]

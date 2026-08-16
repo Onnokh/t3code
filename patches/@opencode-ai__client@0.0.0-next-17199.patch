@@ -1,0 +1,324 @@
+diff --git a/dist/effect/api.d.ts b/dist/effect/api.d.ts
+index 8ed1d0d7d973c3427a3b9811e02653a8767b4b57..71bd6b0986c912e86fba518d864e9a07e292446d 100644
+--- a/dist/effect/api.d.ts
++++ b/dist/effect/api.d.ts
+@@ -1,5 +1,5 @@
+-import type { ModelApi, ProviderApi, WebsearchApi } from "./api/api.js";
+-export type * from "./api/api.js";
++import type { ModelApi, ProviderApi, WebsearchApi } from "";
++export type * from "";
+ export type WebSearchApi<E = never> = WebsearchApi<E>;
+ export interface CatalogApi<E = never> {
+     readonly provider: ProviderApi<E>;
+diff --git a/dist/effect/generated/client.d.ts b/dist/effect/generated/client.d.ts
+index 9cd500d78250cc03fa9846c26eb895b1ed646dcc..2ad8e7a7fe7fe1ca4ca138de8bb0f2da6ca1d97f 100644
+--- a/dist/effect/generated/client.d.ts
++++ b/dist/effect/generated/client.d.ts
+@@ -1,8 +1,8 @@
+ import { Effect, Stream, Schema } from "effect";
+ import { Sse } from "effect/unstable/encoding";
+ import { HttpClientError } from "effect/unstable/http";
+-import type { Endpoint0_0Output, Endpoint0_1Input, Endpoint0_1Output, Endpoint1_0Output, Endpoint2_0Input, Endpoint3_0Input, Endpoint3_0Output, Endpoint3_1Input, Endpoint3_1Output, Endpoint4_0Input, Endpoint4_0Output, Endpoint5_0Input, Endpoint5_0Output, Endpoint5_1Input, Endpoint5_2Input, Endpoint5_3Input, Endpoint5_3Output, Endpoint5_4Output, Endpoint5_5Input, Endpoint5_6Input, Endpoint5_7Input, Endpoint5_8Input, Endpoint5_9Input, Endpoint5_10Input, Endpoint5_11Input, Endpoint5_12Input, Endpoint5_13Input, Endpoint5_14Input, Endpoint5_15Input, Endpoint5_16Input, Endpoint5_17Input, Endpoint5_18Input, Endpoint5_19Input, Endpoint5_20Input, Endpoint5_21Input, Endpoint5_22Input, Endpoint5_22Output, Endpoint5_23Input, Endpoint5_23Output, Endpoint5_24Input, Endpoint5_25Input, Endpoint5_26Input, Endpoint5_27Input, Endpoint5_27Output, Endpoint5_28Input, Endpoint5_29Input, Endpoint5_30Input, Endpoint5_30Output, Endpoint5_31Input, Endpoint5_31Output, Endpoint5_32Input, Endpoint5_33Input, Endpoint5_34Input, Endpoint6_0Input, Endpoint6_0Output, Endpoint7_0Input, Endpoint7_0Output, Endpoint7_1Input, Endpoint7_1Output, Endpoint8_0Input, Endpoint8_0Output, Endpoint9_0Input, Endpoint9_0Output, Endpoint9_1Input, Endpoint9_1Output, Endpoint10_0Input, Endpoint10_0Output, Endpoint10_1Input, Endpoint10_1Output, Endpoint10_2Input, Endpoint10_3Input, Endpoint10_4Input, Endpoint10_4Output, Endpoint10_5Input, Endpoint10_5Output, Endpoint10_6Input, Endpoint10_7Input, Endpoint10_8Input, Endpoint10_8Output, Endpoint10_9Input, Endpoint10_9Output, Endpoint10_10Input, Endpoint11_0Input, Endpoint11_0Output, Endpoint11_1Input, Endpoint11_2Input, Endpoint11_3Input, Endpoint11_4Input, Endpoint11_5Input, Endpoint11_5Output, Endpoint12_0Input, Endpoint12_1Input, Endpoint13_0Output, Endpoint13_1Input, Endpoint13_2Input, Endpoint14_0Input, Endpoint14_0Output, Endpoint14_1Input, Endpoint14_1Output, Endpoint14_2Input, Endpoint14_3Input, Endpoint14_4Input, Endpoint14_5Input, Endpoint14_6Input, Endpoint15_0Input, Endpoint15_0Output, Endpoint15_1Input, Endpoint15_1Output, Endpoint15_2Input, Endpoint15_3Input, Endpoint15_3Output, Endpoint15_4Input, Endpoint15_4Output, Endpoint15_5Input, Endpoint15_6Input, Endpoint16_0Input, Endpoint16_0Output, Endpoint16_1Input, Endpoint16_1Output, Endpoint17_0Input, Endpoint17_0Output, Endpoint18_0Input, Endpoint18_0Output, Endpoint20_0Input, Endpoint20_0Output, Endpoint20_1Input, Endpoint20_1Output, Endpoint20_2Input, Endpoint20_2Output, Endpoint20_3Input, Endpoint20_3Output, Endpoint20_4Input, Endpoint21_0Input, Endpoint21_0Output, Endpoint21_1Input, Endpoint21_1Output, Endpoint21_2Input, Endpoint21_2Output, Endpoint21_3Input, Endpoint21_3Output, Endpoint21_4Input, Endpoint21_4Output, Endpoint21_5Input, Endpoint22_0Input, Endpoint22_0Output, Endpoint22_1Input, Endpoint22_1Output, Endpoint22_2Input, Endpoint22_3Input, Endpoint23_0Input, Endpoint23_0Output, Endpoint24_0Input, Endpoint24_1Input, Endpoint24_2Input, Endpoint25_0Input, Endpoint25_0Output, Endpoint25_1Input, Endpoint25_1Output, Endpoint25_2Input, Endpoint25_2Output, Endpoint26_0Output, Endpoint26_1Input, Endpoint27_0Output, Endpoint28_0Input, Endpoint28_0Output, Endpoint28_1Input, Endpoint28_1Output, Endpoint29_0Input, Endpoint29_0Output } from "../api/api.js";
+-import { ClientError } from "./client-error";
++import type { Endpoint0_0Output, Endpoint0_1Input, Endpoint0_1Output, Endpoint1_0Output, Endpoint2_0Input, Endpoint3_0Input, Endpoint3_0Output, Endpoint3_1Input, Endpoint3_1Output, Endpoint4_0Input, Endpoint4_0Output, Endpoint5_0Input, Endpoint5_0Output, Endpoint5_1Input, Endpoint5_2Input, Endpoint5_3Input, Endpoint5_3Output, Endpoint5_4Output, Endpoint5_5Input, Endpoint5_6Input, Endpoint5_7Input, Endpoint5_8Input, Endpoint5_9Input, Endpoint5_10Input, Endpoint5_11Input, Endpoint5_12Input, Endpoint5_13Input, Endpoint5_14Input, Endpoint5_15Input, Endpoint5_16Input, Endpoint5_17Input, Endpoint5_18Input, Endpoint5_19Input, Endpoint5_20Input, Endpoint5_21Input, Endpoint5_22Input, Endpoint5_22Output, Endpoint5_23Input, Endpoint5_23Output, Endpoint5_24Input, Endpoint5_25Input, Endpoint5_26Input, Endpoint5_27Input, Endpoint5_27Output, Endpoint5_28Input, Endpoint5_29Input, Endpoint5_30Input, Endpoint5_30Output, Endpoint5_31Input, Endpoint5_31Output, Endpoint5_32Input, Endpoint5_33Input, Endpoint5_34Input, Endpoint6_0Input, Endpoint6_0Output, Endpoint7_0Input, Endpoint7_0Output, Endpoint7_1Input, Endpoint7_1Output, Endpoint8_0Input, Endpoint8_0Output, Endpoint9_0Input, Endpoint9_0Output, Endpoint9_1Input, Endpoint9_1Output, Endpoint10_0Input, Endpoint10_0Output, Endpoint10_1Input, Endpoint10_1Output, Endpoint10_2Input, Endpoint10_3Input, Endpoint10_4Input, Endpoint10_4Output, Endpoint10_5Input, Endpoint10_5Output, Endpoint10_6Input, Endpoint10_7Input, Endpoint10_8Input, Endpoint10_8Output, Endpoint10_9Input, Endpoint10_9Output, Endpoint10_10Input, Endpoint11_0Input, Endpoint11_0Output, Endpoint11_1Input, Endpoint11_2Input, Endpoint11_3Input, Endpoint11_4Input, Endpoint11_5Input, Endpoint11_5Output, Endpoint12_0Input, Endpoint12_1Input, Endpoint13_0Output, Endpoint13_1Input, Endpoint13_2Input, Endpoint14_0Input, Endpoint14_0Output, Endpoint14_1Input, Endpoint14_1Output, Endpoint14_2Input, Endpoint14_3Input, Endpoint14_4Input, Endpoint14_5Input, Endpoint14_6Input, Endpoint15_0Input, Endpoint15_0Output, Endpoint15_1Input, Endpoint15_1Output, Endpoint15_2Input, Endpoint15_3Input, Endpoint15_3Output, Endpoint15_4Input, Endpoint15_4Output, Endpoint15_5Input, Endpoint15_6Input, Endpoint16_0Input, Endpoint16_0Output, Endpoint16_1Input, Endpoint16_1Output, Endpoint17_0Input, Endpoint17_0Output, Endpoint18_0Input, Endpoint18_0Output, Endpoint20_0Input, Endpoint20_0Output, Endpoint20_1Input, Endpoint20_1Output, Endpoint20_2Input, Endpoint20_2Output, Endpoint20_3Input, Endpoint20_3Output, Endpoint20_4Input, Endpoint21_0Input, Endpoint21_0Output, Endpoint21_1Input, Endpoint21_1Output, Endpoint21_2Input, Endpoint21_2Output, Endpoint21_3Input, Endpoint21_3Output, Endpoint21_4Input, Endpoint21_4Output, Endpoint21_5Input, Endpoint22_0Input, Endpoint22_0Output, Endpoint22_1Input, Endpoint22_1Output, Endpoint22_2Input, Endpoint22_3Input, Endpoint23_0Input, Endpoint23_0Output, Endpoint24_0Input, Endpoint24_1Input, Endpoint24_2Input, Endpoint25_0Input, Endpoint25_0Output, Endpoint25_1Input, Endpoint25_1Output, Endpoint25_2Input, Endpoint25_2Output, Endpoint26_0Output, Endpoint26_1Input, Endpoint27_0Output, Endpoint28_0Input, Endpoint28_0Output, Endpoint28_1Input, Endpoint28_1Output, Endpoint29_0Input, Endpoint29_0Output } from "";
++import { ClientError } from "./client-error.js";
+ export declare const make: (options?: {
+     readonly baseUrl?: URL | string;
+ }) => Effect.Effect<{
+diff --git a/dist/effect/generated/client.js b/dist/effect/generated/client.js
+index c1c432d86d6b33fa908f00ce7cd870ab879d4ce5..d02ff891cb62edcbc2f91a7513a6a68ed1ea719e 100644
+--- a/dist/effect/generated/client.js
++++ b/dist/effect/generated/client.js
+@@ -3,8 +3,8 @@ import { Effect, Stream, Schema } from "effect";
+ import { Sse } from "effect/unstable/encoding";
+ import { HttpClientError } from "effect/unstable/http";
+ import { HttpApiClient } from "effect/unstable/httpapi";
+-import { ClientApi } from "../../contract";
+-import { ClientError } from "./client-error";
++import { ClientApi } from "../../contract.js";
++import { ClientError } from "./client-error.js";
+ const mapClientError = (error) => HttpClientError.isHttpClientError(error) || Schema.isSchemaError(error) || Sse.Retry.is(error)
+     ? new ClientError({ cause: error })
+     : error;
+diff --git a/dist/effect/generated/index.d.ts b/dist/effect/generated/index.d.ts
+index d6fbc5b4419d89885ca79d8cc08c69d63f0b6b12..70218d920be0b85d39681858a5f65124a1377da9 100644
+--- a/dist/effect/generated/index.d.ts
++++ b/dist/effect/generated/index.d.ts
+@@ -1,2 +1,2 @@
+-export { ClientError } from "./client-error";
+-export * as OpenCode from "./client";
++export { ClientError } from "./client-error.js";
++export * as OpenCode from "./client.js";
+diff --git a/dist/effect/generated/index.js b/dist/effect/generated/index.js
+index d6fbc5b4419d89885ca79d8cc08c69d63f0b6b12..70218d920be0b85d39681858a5f65124a1377da9 100644
+--- a/dist/effect/generated/index.js
++++ b/dist/effect/generated/index.js
+@@ -1,2 +1,2 @@
+-export { ClientError } from "./client-error";
+-export * as OpenCode from "./client";
++export { ClientError } from "./client-error.js";
++export * as OpenCode from "./client.js";
+diff --git a/dist/effect/index.d.ts b/dist/effect/index.d.ts
+index 5fd90036803cbf921629c4c5a48fdb64f82f0c63..8d9d85c0c756b94d22bf888ac145847ef732f343 100644
+--- a/dist/effect/index.d.ts
++++ b/dist/effect/index.d.ts
+@@ -1,6 +1,6 @@
+ import type { Effect } from "effect";
+-export * from "./generated/index";
+-export type { AgentApi, AppApi, CatalogApi, CommandApi, ConfigApi, EventApi, IntegrationApi, ModelApi, PluginApi, ProviderApi, ReferenceApi, WebSearchApi, SessionApi, SkillApi, } from "./api.js";
++export * from "./generated/index.js";
++export type { AgentApi, AppApi, CatalogApi, CommandApi, ConfigApi, EventApi, IntegrationApi, ModelApi, PluginApi, ProviderApi, ReferenceApi, WebSearchApi, SessionApi, SkillApi, } from "";
+ export { Agent } from "@opencode-ai/schema/agent";
+ export { Command } from "@opencode-ai/schema/command";
+ export { Config } from "@opencode-ai/schema/config";
+@@ -29,4 +29,4 @@ export { Skill } from "@opencode-ai/schema/skill";
+ export { Prompt } from "@opencode-ai/schema/prompt";
+ export { PromptInput } from "@opencode-ai/schema/prompt-input";
+ export type { OpenCodeEvent } from "@opencode-ai/protocol/groups/event";
+-export type OpenCodeClient = Effect.Success<ReturnType<typeof import("./generated/client").make>>;
++export type OpenCodeClient = Effect.Success<ReturnType<typeof import("./generated/client.js").make>>;
+diff --git a/dist/effect/index.js b/dist/effect/index.js
+index 000e9be41c5e0a63ed6c062d9e627545b891b6aa..d8e397e7edb341539c8637cfcb5dbc58bc8ff3b3 100644
+--- a/dist/effect/index.js
++++ b/dist/effect/index.js
+@@ -1,4 +1,4 @@
+-export * from "./generated/index";
++export * from "./generated/index.js";
+ export { Agent } from "@opencode-ai/schema/agent";
+ export { Command } from "@opencode-ai/schema/command";
+ export { Config } from "@opencode-ai/schema/config";
+diff --git a/dist/effect/service.d.ts b/dist/effect/service.d.ts
+index 9d12ea51c0e95458de770158840052e680b6c6d5..2608e3dd829020062bcfa727d4cff503d711ebb1 100644
+--- a/dist/effect/service.d.ts
++++ b/dist/effect/service.d.ts
+@@ -1,6 +1,6 @@
+ import { Effect, FileSystem, Schema } from "effect";
+-import type { DiscoverOptions, Endpoint, EnsureOptions, StopOptions } from "../service.js";
+-export * from "../service.js";
++import type { DiscoverOptions, Endpoint, EnsureOptions, StopOptions } from "";
++export * from "";
+ /** Contents of the local service registration file. */
+ export type Info = import("../service.js").Info;
+ /** Discover a healthy, compatible local service without starting one. */
+diff --git a/dist/promise/generated/client.d.ts b/dist/promise/generated/client.d.ts
+index 539163c22b2c5e459e17c4bbada6a5ef8d624d6d..c90af1ab5e821c32ed793cc0e6e7c1fc9f9bda60 100644
+--- a/dist/promise/generated/client.d.ts
++++ b/dist/promise/generated/client.d.ts
+@@ -1,4 +1,4 @@
+-import type { HealthStopInput, ServerGetOutput, LocationGetInput, LocationGetOutput, AgentListInput, AgentListOutput, AgentGetInput, AgentGetOutput, PluginListInput, PluginListOutput, SessionListInput, SessionCreateInput, SessionImportInput, SessionExportInput, SessionGetInput, SessionRemoveInput, SessionForkInput, SessionSwitchAgentInput, SessionSwitchModelInput, SessionRenameInput, SessionMoveInput, SessionPromptInput, SessionCommandInput, SessionSkillInput, SessionSyntheticInput, SessionShellInput, SessionCompactInput, SessionWaitInput, SessionRevertStageInput, SessionRevertClearInput, SessionRevertCommitInput, SessionContextInput, SessionPendingListInput, SessionPendingCancelInput, SessionPendingSteerInput, SessionPendingQueueInput, SessionInstructionsEntryListInput, SessionInstructionsEntryPutInput, SessionInstructionsEntryRemoveInput, SessionGenerateInput, SessionLogInput, SessionLogOutput, SessionInterruptInput, SessionBackgroundInput, SessionMessageInput, MessageListInput, ModelListInput, ModelListOutput, ModelDefaultInput, ModelDefaultOutput, GenerateTextInput, ProviderListInput, ProviderListOutput, ProviderGetInput, ProviderGetOutput, IntegrationListInput, IntegrationListOutput, IntegrationGetInput, IntegrationGetOutput, IntegrationWellknownAddInput, IntegrationConnectKeyInput, IntegrationOauthConnectInput, IntegrationOauthConnectOutput, IntegrationOauthStatusInput, IntegrationOauthStatusOutput, IntegrationOauthCompleteInput, IntegrationOauthCancelInput, IntegrationCommandConnectInput, IntegrationCommandConnectOutput, IntegrationCommandStatusInput, IntegrationCommandStatusOutput, IntegrationCommandCancelInput, McpListInput, McpListOutput, McpAddInput, McpRemoveInput, McpConnectInput, McpDisconnectInput, McpResourceCatalogInput, McpResourceCatalogOutput, CredentialUpdateInput, CredentialRemoveInput, ProjectListOutput, ProjectCurrentInput, ProjectDirectoriesInput, FormRequestListInput, FormRequestListOutput, FormListInput, FormCreateInput, FormGetInput, FormStateInput, FormReplyInput, FormCancelInput, PermissionRequestListInput, PermissionRequestListOutput, PermissionSavedListInput, PermissionSavedRemoveInput, PermissionCreateInput, PermissionListInput, PermissionGetInput, PermissionReplyInput, FileReadInput, FileReadOutput, FileListInput, FileListOutput, FileFindInput, FileFindOutput, CommandListInput, CommandListOutput, SkillListInput, SkillListOutput, EventSubscribeOutput, PtyListInput, PtyListOutput, PtyCreateInput, PtyCreateOutput, PtyGetInput, PtyGetOutput, PtyUpdateInput, PtyUpdateOutput, PtyRemoveInput, ShellListInput, ShellListOutput, ShellCreateInput, ShellCreateOutput, ShellGetInput, ShellGetOutput, ShellTimeoutInput, ShellTimeoutOutput, ShellOutputInput, ShellOutputOutput, ShellRemoveInput, QuestionRequestListInput, QuestionRequestListOutput, QuestionListInput, QuestionReplyInput, QuestionRejectInput, ReferenceListInput, ReferenceListOutput, ProjectCopyCreateInput, ProjectCopyRemoveInput, ProjectCopyRefreshInput, VcsGetInput, VcsGetOutput, VcsStatusInput, VcsStatusOutput, VcsDiffInput, VcsDiffOutput, DebugLocationListOutput, DebugLocationEvictInput, MigrationV1StatusOutput, WebsearchProvidersInput, WebsearchProvidersOutput, WebsearchQueryInput, WebsearchQueryOutput, ConfigGetInput, ConfigGetOutput } from "./types";
++import type { HealthStopInput, ServerGetOutput, LocationGetInput, LocationGetOutput, AgentListInput, AgentListOutput, AgentGetInput, AgentGetOutput, PluginListInput, PluginListOutput, SessionListInput, SessionCreateInput, SessionImportInput, SessionExportInput, SessionGetInput, SessionRemoveInput, SessionForkInput, SessionSwitchAgentInput, SessionSwitchModelInput, SessionRenameInput, SessionMoveInput, SessionPromptInput, SessionCommandInput, SessionSkillInput, SessionSyntheticInput, SessionShellInput, SessionCompactInput, SessionWaitInput, SessionRevertStageInput, SessionRevertClearInput, SessionRevertCommitInput, SessionContextInput, SessionPendingListInput, SessionPendingCancelInput, SessionPendingSteerInput, SessionPendingQueueInput, SessionInstructionsEntryListInput, SessionInstructionsEntryPutInput, SessionInstructionsEntryRemoveInput, SessionGenerateInput, SessionLogInput, SessionLogOutput, SessionInterruptInput, SessionBackgroundInput, SessionMessageInput, MessageListInput, ModelListInput, ModelListOutput, ModelDefaultInput, ModelDefaultOutput, GenerateTextInput, ProviderListInput, ProviderListOutput, ProviderGetInput, ProviderGetOutput, IntegrationListInput, IntegrationListOutput, IntegrationGetInput, IntegrationGetOutput, IntegrationWellknownAddInput, IntegrationConnectKeyInput, IntegrationOauthConnectInput, IntegrationOauthConnectOutput, IntegrationOauthStatusInput, IntegrationOauthStatusOutput, IntegrationOauthCompleteInput, IntegrationOauthCancelInput, IntegrationCommandConnectInput, IntegrationCommandConnectOutput, IntegrationCommandStatusInput, IntegrationCommandStatusOutput, IntegrationCommandCancelInput, McpListInput, McpListOutput, McpAddInput, McpRemoveInput, McpConnectInput, McpDisconnectInput, McpResourceCatalogInput, McpResourceCatalogOutput, CredentialUpdateInput, CredentialRemoveInput, ProjectListOutput, ProjectCurrentInput, ProjectDirectoriesInput, FormRequestListInput, FormRequestListOutput, FormListInput, FormCreateInput, FormGetInput, FormStateInput, FormReplyInput, FormCancelInput, PermissionRequestListInput, PermissionRequestListOutput, PermissionSavedListInput, PermissionSavedRemoveInput, PermissionCreateInput, PermissionListInput, PermissionGetInput, PermissionReplyInput, FileReadInput, FileReadOutput, FileListInput, FileListOutput, FileFindInput, FileFindOutput, CommandListInput, CommandListOutput, SkillListInput, SkillListOutput, EventSubscribeOutput, PtyListInput, PtyListOutput, PtyCreateInput, PtyCreateOutput, PtyGetInput, PtyGetOutput, PtyUpdateInput, PtyUpdateOutput, PtyRemoveInput, ShellListInput, ShellListOutput, ShellCreateInput, ShellCreateOutput, ShellGetInput, ShellGetOutput, ShellTimeoutInput, ShellTimeoutOutput, ShellOutputInput, ShellOutputOutput, ShellRemoveInput, QuestionRequestListInput, QuestionRequestListOutput, QuestionListInput, QuestionReplyInput, QuestionRejectInput, ReferenceListInput, ReferenceListOutput, ProjectCopyCreateInput, ProjectCopyRemoveInput, ProjectCopyRefreshInput, VcsGetInput, VcsGetOutput, VcsStatusInput, VcsStatusOutput, VcsDiffInput, VcsDiffOutput, DebugLocationListOutput, DebugLocationEvictInput, MigrationV1StatusOutput, WebsearchProvidersInput, WebsearchProvidersOutput, WebsearchQueryInput, WebsearchQueryOutput, ConfigGetInput, ConfigGetOutput } from "./types.js";
+ export interface ClientOptions {
+     readonly baseUrl: string;
+     readonly fetch?: typeof globalThis.fetch;
+@@ -10,8 +10,8 @@ export interface RequestOptions {
+ }
+ export declare function make(options: ClientOptions): {
+     health: {
+-        get: (requestOptions?: RequestOptions) => Promise<import("./types").ServiceHealth>;
+-        stop: (input: HealthStopInput, requestOptions?: RequestOptions) => Promise<import("./types").ServiceStopResponse>;
++        get: (requestOptions?: RequestOptions) => Promise<import("./types.js").ServiceHealth>;
++        stop: (input: HealthStopInput, requestOptions?: RequestOptions) => Promise<import("./types.js").ServiceStopResponse>;
+     };
+     server: {
+         get: (requestOptions?: RequestOptions) => Promise<ServerGetOutput>;
+@@ -27,42 +27,42 @@ export declare function make(options: ClientOptions): {
+         list: (input?: PluginListInput, requestOptions?: RequestOptions) => Promise<PluginListOutput>;
+     };
+     session: {
+-        list: (input?: SessionListInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionsResponse>;
+-        create: (input?: SessionCreateInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionInfo>;
+-        import: (input: SessionImportInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionInfo>;
+-        export: (input: SessionExportInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionTransferData>;
++        list: (input?: SessionListInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionsResponse>;
++        create: (input?: SessionCreateInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionInfo>;
++        import: (input: SessionImportInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionInfo>;
++        export: (input: SessionExportInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionTransferData>;
+         active: (requestOptions?: RequestOptions) => Promise<{
+-            [x: string]: import("./types").SessionActive;
++            [x: string]: import("./types.js").SessionActive;
+         }>;
+-        get: (input: SessionGetInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionInfo>;
++        get: (input: SessionGetInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionInfo>;
+         remove: (input: SessionRemoveInput, requestOptions?: RequestOptions) => Promise<void>;
+-        fork: (input: SessionForkInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionInfo>;
++        fork: (input: SessionForkInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionInfo>;
+         switchAgent: (input: SessionSwitchAgentInput, requestOptions?: RequestOptions) => Promise<void>;
+         switchModel: (input: SessionSwitchModelInput, requestOptions?: RequestOptions) => Promise<void>;
+         rename: (input: SessionRenameInput, requestOptions?: RequestOptions) => Promise<void>;
+         move: (input: SessionMoveInput, requestOptions?: RequestOptions) => Promise<void>;
+-        prompt: (input: SessionPromptInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionPendingUser>;
+-        command: (input: SessionCommandInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionPendingUser>;
++        prompt: (input: SessionPromptInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionPendingUser>;
++        command: (input: SessionCommandInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionPendingUser>;
+         skill: (input: SessionSkillInput, requestOptions?: RequestOptions) => Promise<void>;
+-        synthetic: (input: SessionSyntheticInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionPendingSynthetic>;
++        synthetic: (input: SessionSyntheticInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionPendingSynthetic>;
+         shell: (input: SessionShellInput, requestOptions?: RequestOptions) => Promise<void>;
+-        compact: (input: SessionCompactInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionPendingCompaction>;
++        compact: (input: SessionCompactInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionPendingCompaction>;
+         wait: (input: SessionWaitInput, requestOptions?: RequestOptions) => Promise<void>;
+         revert: {
+-            stage: (input: SessionRevertStageInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionRevert>;
++            stage: (input: SessionRevertStageInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionRevert>;
+             clear: (input: SessionRevertClearInput, requestOptions?: RequestOptions) => Promise<void>;
+             commit: (input: SessionRevertCommitInput, requestOptions?: RequestOptions) => Promise<void>;
+         };
+-        context: (input: SessionContextInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionMessageInfo[]>;
++        context: (input: SessionContextInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionMessageInfo[]>;
+         pending: {
+-            list: (input: SessionPendingListInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionPendingInfo[]>;
++            list: (input: SessionPendingListInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionPendingInfo[]>;
+             cancel: (input: SessionPendingCancelInput, requestOptions?: RequestOptions) => Promise<void>;
+             steer: (input: SessionPendingSteerInput, requestOptions?: RequestOptions) => Promise<void>;
+             queue: (input: SessionPendingQueueInput, requestOptions?: RequestOptions) => Promise<void>;
+         };
+         instructions: {
+             entry: {
+-                list: (input: SessionInstructionsEntryListInput, requestOptions?: RequestOptions) => Promise<import("./types").InstructionEntryInfo[]>;
++                list: (input: SessionInstructionsEntryListInput, requestOptions?: RequestOptions) => Promise<import("./types.js").InstructionEntryInfo[]>;
+                 put: (input: SessionInstructionsEntryPutInput, requestOptions?: RequestOptions) => Promise<void>;
+                 remove: (input: SessionInstructionsEntryRemoveInput, requestOptions?: RequestOptions) => Promise<void>;
+             };
+@@ -73,10 +73,10 @@ export declare function make(options: ClientOptions): {
+         log: (input: SessionLogInput, requestOptions?: RequestOptions) => AsyncIterable<SessionLogOutput>;
+         interrupt: (input: SessionInterruptInput, requestOptions?: RequestOptions) => Promise<void>;
+         background: (input: SessionBackgroundInput, requestOptions?: RequestOptions) => Promise<void>;
+-        message: (input: SessionMessageInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionMessageAgentSelected | import("./types").SessionMessageSynthetic | import("./types").SessionMessageSystem | import("./types").SessionMessageSkill | import("./types").SessionMessageShell | import("./types").SessionMessageCompactionRunning | import("./types").SessionMessageCompactionCompleted | import("./types").SessionMessageModelSelected | import("./types").SessionMessageCompactionFailed | import("./types").SessionMessageUser | import("./types").SessionMessageAssistant>;
++        message: (input: SessionMessageInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionMessageAgentSelected | import("./types.js").SessionMessageSynthetic | import("./types.js").SessionMessageSystem | import("./types.js").SessionMessageSkill | import("./types.js").SessionMessageShell | import("./types.js").SessionMessageCompactionRunning | import("./types.js").SessionMessageCompactionCompleted | import("./types.js").SessionMessageModelSelected | import("./types.js").SessionMessageCompactionFailed | import("./types.js").SessionMessageUser | import("./types.js").SessionMessageAssistant>;
+     };
+     message: {
+-        list: (input: MessageListInput, requestOptions?: RequestOptions) => Promise<import("./types").SessionMessagesResponse>;
++        list: (input: MessageListInput, requestOptions?: RequestOptions) => Promise<import("./types.js").SessionMessagesResponse>;
+     };
+     model: {
+         list: (input?: ModelListInput, requestOptions?: RequestOptions) => Promise<ModelListOutput>;
+@@ -128,21 +128,21 @@ export declare function make(options: ClientOptions): {
+     };
+     project: {
+         list: (requestOptions?: RequestOptions) => Promise<ProjectListOutput>;
+-        current: (input?: ProjectCurrentInput, requestOptions?: RequestOptions) => Promise<import("./types").ProjectCurrent>;
+-        directories: (input: ProjectDirectoriesInput, requestOptions?: RequestOptions) => Promise<import("./types").ProjectDirectories>;
++        current: (input?: ProjectCurrentInput, requestOptions?: RequestOptions) => Promise<import("./types.js").ProjectCurrent>;
++        directories: (input: ProjectDirectoriesInput, requestOptions?: RequestOptions) => Promise<import("./types.js").ProjectDirectories>;
+     };
+     form: {
+         request: {
+             list: (input?: FormRequestListInput, requestOptions?: RequestOptions) => Promise<FormRequestListOutput>;
+         };
+-        list: (input: FormListInput, requestOptions?: RequestOptions) => Promise<import("./types").FormInfo[]>;
+-        create: (input: FormCreateInput, requestOptions?: RequestOptions) => Promise<import("./types").FormInfo>;
+-        get: (input: FormGetInput, requestOptions?: RequestOptions) => Promise<import("./types").FormInfo>;
++        list: (input: FormListInput, requestOptions?: RequestOptions) => Promise<import("./types.js").FormInfo[]>;
++        create: (input: FormCreateInput, requestOptions?: RequestOptions) => Promise<import("./types.js").FormInfo>;
++        get: (input: FormGetInput, requestOptions?: RequestOptions) => Promise<import("./types.js").FormInfo>;
+         state: (input: FormStateInput, requestOptions?: RequestOptions) => Promise<{
+             status: "pending";
+         } | {
+             status: "answered";
+-            answer: import("./types").FormAnswer;
++            answer: import("./types.js").FormAnswer;
+         } | {
+             status: "cancelled";
+         }>;
+@@ -154,15 +154,15 @@ export declare function make(options: ClientOptions): {
+             list: (input?: PermissionRequestListInput, requestOptions?: RequestOptions) => Promise<PermissionRequestListOutput>;
+         };
+         saved: {
+-            list: (input?: PermissionSavedListInput, requestOptions?: RequestOptions) => Promise<import("./types").PermissionSavedInfo[]>;
++            list: (input?: PermissionSavedListInput, requestOptions?: RequestOptions) => Promise<import("./types.js").PermissionSavedInfo[]>;
+             remove: (input: PermissionSavedRemoveInput, requestOptions?: RequestOptions) => Promise<void>;
+         };
+         create: (input: PermissionCreateInput, requestOptions?: RequestOptions) => Promise<{
+             id: string;
+-            effect: import("./types").PermissionEffect;
++            effect: import("./types.js").PermissionEffect;
+         }>;
+-        list: (input: PermissionListInput, requestOptions?: RequestOptions) => Promise<import("./types").PermissionRequest[]>;
+-        get: (input: PermissionGetInput, requestOptions?: RequestOptions) => Promise<import("./types").PermissionRequest>;
++        list: (input: PermissionListInput, requestOptions?: RequestOptions) => Promise<import("./types.js").PermissionRequest[]>;
++        get: (input: PermissionGetInput, requestOptions?: RequestOptions) => Promise<import("./types.js").PermissionRequest>;
+         reply: (input: PermissionReplyInput, requestOptions?: RequestOptions) => Promise<void>;
+     };
+     file: {
+@@ -198,7 +198,7 @@ export declare function make(options: ClientOptions): {
+         request: {
+             list: (input?: QuestionRequestListInput, requestOptions?: RequestOptions) => Promise<QuestionRequestListOutput>;
+         };
+-        list: (input: QuestionListInput, requestOptions?: RequestOptions) => Promise<import("./types").QuestionRequest[]>;
++        list: (input: QuestionListInput, requestOptions?: RequestOptions) => Promise<import("./types.js").QuestionRequest[]>;
+         reply: (input: QuestionReplyInput, requestOptions?: RequestOptions) => Promise<void>;
+         reject: (input: QuestionRejectInput, requestOptions?: RequestOptions) => Promise<void>;
+     };
+@@ -206,7 +206,7 @@ export declare function make(options: ClientOptions): {
+         list: (input?: ReferenceListInput, requestOptions?: RequestOptions) => Promise<ReferenceListOutput>;
+     };
+     projectCopy: {
+-        create: (input: ProjectCopyCreateInput, requestOptions?: RequestOptions) => Promise<import("./types").ProjectCopyCopy>;
++        create: (input: ProjectCopyCreateInput, requestOptions?: RequestOptions) => Promise<import("./types.js").ProjectCopyCopy>;
+         remove: (input: ProjectCopyRemoveInput, requestOptions?: RequestOptions) => Promise<void>;
+         refresh: (input: ProjectCopyRefreshInput, requestOptions?: RequestOptions) => Promise<void>;
+     };
+diff --git a/dist/promise/generated/client.js b/dist/promise/generated/client.js
+index 17dcc06cc7b8bfa654048e257137c2b458b4876d..b5bc664df5e796148edd1facaf036308faba7ccf 100644
+--- a/dist/promise/generated/client.js
++++ b/dist/promise/generated/client.js
+@@ -1,4 +1,4 @@
+-import { ClientError } from "./client-error";
++import { ClientError } from "./client-error.js";
+ const maxSseEventBytes = 16 * 1024 * 1024;
+ export function make(options) {
+     const fetch = options.fetch ?? globalThis.fetch;
+diff --git a/dist/promise/generated/index.d.ts b/dist/promise/generated/index.d.ts
+index e1242d3db7ff559f3afe8614082960091daacfd7..f0db58f5f5f1951d9c130e13b0282a8ee38b70bc 100644
+--- a/dist/promise/generated/index.d.ts
++++ b/dist/promise/generated/index.d.ts
+@@ -1,3 +1,3 @@
+-export { ClientError, type ClientErrorReason } from "./client-error";
+-export * as OpenCode from "./client";
+-export * from "./types";
++export { ClientError, type ClientErrorReason } from "./client-error.js";
++export * as OpenCode from "./client.js";
++export * from "./types.js";
+diff --git a/dist/promise/generated/index.js b/dist/promise/generated/index.js
+index 8d1b9d2fc10bc5bb6fdb0aeca08952fc94c7be69..c90148c825355bdce139c17cd3e943902d565657 100644
+--- a/dist/promise/generated/index.js
++++ b/dist/promise/generated/index.js
+@@ -1,3 +1,3 @@
+-export { ClientError } from "./client-error";
+-export * as OpenCode from "./client";
+-export * from "./types";
++export { ClientError } from "./client-error.js";
++export * as OpenCode from "./client.js";
++export * from "./types.js";
+diff --git a/dist/promise/index.d.ts b/dist/promise/index.d.ts
+index 764500f6966a9d4ca763ee03ce6fb6b4832dc8a8..7753bf39e1a3b6f0e017b175484699548d1cff23 100644
+--- a/dist/promise/index.d.ts
++++ b/dist/promise/index.d.ts
+@@ -1,4 +1,4 @@
+-export * from "./generated/index";
+-export type { AgentApi, CatalogApi, CommandApi, ConfigApi, EventApi, IntegrationApi, ModelApi, PluginApi, ProviderApi, ReferenceApi, WebSearchApi, SessionApi, SkillApi, } from "./api.js";
+-export type { EventSubscribeOutput as OpenCodeEvent } from "./generated/types";
+-export type OpenCodeClient = ReturnType<typeof import("./generated/client").make>;
++export * from "./generated/index.js";
++export type { AgentApi, CatalogApi, CommandApi, ConfigApi, EventApi, IntegrationApi, ModelApi, PluginApi, ProviderApi, ReferenceApi, WebSearchApi, SessionApi, SkillApi, } from "";
++export type { EventSubscribeOutput as OpenCodeEvent } from "./generated/types.js";
++export type OpenCodeClient = ReturnType<typeof import("./generated/client.js").make>;
+diff --git a/dist/promise/index.js b/dist/promise/index.js
+index 642c748eb9fc6a985196ae45c34a4c7105d64c48..5a5e14ae58b8e4a2273a289bf58bb7c8c334e3f4 100644
+--- a/dist/promise/index.js
++++ b/dist/promise/index.js
+@@ -1 +1 @@
+-export * from "./generated/index";
++export * from "./generated/index.js";
+diff --git a/dist/promise/service.d.ts b/dist/promise/service.d.ts
+index 16d3773bc408aa33dad950e1719a4ece7ac79788..88e4e8710c8c8c7a0d858296e5221c6832d23c79 100644
+--- a/dist/promise/service.d.ts
++++ b/dist/promise/service.d.ts
+@@ -1,5 +1,5 @@
+-import type { DiscoverOptions, Endpoint, EnsureOptions, StopOptions } from "../service.js";
+-export * from "../service.js";
++import type { DiscoverOptions, Endpoint, EnsureOptions, StopOptions } from "";
++export * from "";
+ /** Discover a healthy, compatible local service without starting one. */
+ export declare function discover(options?: DiscoverOptions): Promise<{
+     url: string;

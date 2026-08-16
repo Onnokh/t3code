@@ -1814,12 +1814,16 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 (provider) => provider.instanceId === ProviderInstanceId.make("cursor"),
               );
 
+              // opencode2 hydrates as a built-in instance since PLO-414; it
+              // reports its own unavailable state when no external server is
+              // configured instead of disappearing from the snapshot list.
               assert.deepStrictEqual(providers.map((provider) => provider.instanceId).toSorted(), [
                 "claudeAgent",
                 "codex",
                 "cursor",
                 "grok",
                 "opencode",
+                "opencode2",
               ]);
               assert.strictEqual(cursorProvider?.enabled, false);
               assert.strictEqual(cursorProvider?.status, "disabled");

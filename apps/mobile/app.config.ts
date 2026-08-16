@@ -66,17 +66,14 @@ const RELEASE_ASSETS = {
 const VARIANT_CONFIG = {
   development: {
     ...resolveDevskiIdentity("development"),
-    relyingParty: new URL(DEVSKI_IDENTITY.gatewayUrl).hostname,
     assets: DEVELOPMENT_ASSETS,
   },
   preview: {
     ...resolveDevskiIdentity("preview"),
-    relyingParty: new URL(DEVSKI_IDENTITY.gatewayUrl).hostname,
     assets: PREVIEW_ASSETS,
   },
   production: {
     ...resolveDevskiIdentity("production"),
-    relyingParty: new URL(DEVSKI_IDENTITY.gatewayUrl).hostname,
     assets: RELEASE_ASSETS,
   },
 } as const;
@@ -161,7 +158,7 @@ const config: ExpoConfig = {
   slug: DEVSKI_IDENTITY.slug,
   platforms: ["ios"],
   scheme: variant.scheme,
-  version: "0.1.0",
+  version: DEVSKI_IDENTITY.marketingVersion,
   orientation: "portrait",
   icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",
@@ -175,10 +172,8 @@ const config: ExpoConfig = {
     // showcase capture build requires full screen (see infoPlist below).
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
-    associatedDomains: [
-      `applinks:${variant.relyingParty}`,
-      `webcredentials:${variant.relyingParty}`,
-    ],
+    appleTeamId: DEVSKI_IDENTITY.appleTeamId,
+    associatedDomains: [...DEVSKI_IDENTITY.associatedDomains],
     infoPlist: {
       NSAppTransportSecurity: {
         NSAllowsArbitraryLoads: true,
@@ -331,6 +326,7 @@ const config: ExpoConfig = {
     appVariant: APP_VARIANT,
     gatewayUrl: DEVSKI_GATEWAY_URL,
     iosPersonalTeamBuild: isIosPersonalTeamBuild,
+    ...(DEVSKI_IDENTITY.easProjectId ? { eas: { projectId: DEVSKI_IDENTITY.easProjectId } } : {}),
     ...(APP_VARIANT === "production"
       ? {}
       : {

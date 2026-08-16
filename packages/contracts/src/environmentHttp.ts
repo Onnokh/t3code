@@ -481,6 +481,17 @@ export class EnvironmentAuthHttpApi extends HttpApiGroup.make("auth")
       success: AuthOtherClientSessionsRevokeResult,
       error: EnvironmentScopedOperationErrors,
     }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    // Self sign-out: any authenticated session may revoke itself without
+    // holding `access:write`. This is the "Sign out this device" path — the
+    // deliberate counterpart to `revokeClient`, which refuses the current
+    // session so a device cannot revoke itself by accident.
+    HttpApiEndpoint.post("signOut", "/api/auth/sign-out", {
+      headers: OptionalBearerHeaders,
+      success: AuthClientSessionRevokeResult,
+      error: [EnvironmentInternalError],
+    }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 
 const EnvironmentOrchestrationThreadSnapshotParams = Schema.Struct({

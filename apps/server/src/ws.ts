@@ -2275,6 +2275,38 @@ const makeWsRpcLayer = (
     }),
   );
 
+// PLO-421: an established `/ws` connection must not outlive its Device
+// Session. Revocation is an atomic security transition — rejecting new
+// credentials is not enough, so every accepted socket also watches its own
+// session. The `clientRemoved` event gives prompt closure; the
+// low-frequency authoritative recheck covers the small window between
+// upgrade authentication and event subscription and additionally ends
+// sockets whose session expired while connected.
+const SESSION_TERMINATION_RECHECK_INTERVAL = Duration.seconds(30);
+
+export const awaitSessionTermination = (
+  sessions: SessionStore.SessionStore["Service"],
+  sessionId: AuthSessionId,
+): Effect.Effect<void> => {
+  const revocationEvent = sessions.streamChanges.pipe(
+    Stream.filter((change) => change.type === "clientRemoved" && change.sessionId === sessionId),
+    Stream.take(1),
+    Stream.runDrain,
+  );
+  const authoritativeRecheck = Effect.gen(function* () {
+    while (true) {
+      const active = yield* sessions.listActive().pipe(Effect.orElseSucceed(() => null));
+      // A listing failure keeps the socket open: only an authoritative
+      // "this session is gone" answer may terminate it.
+      if (active !== null && !active.some((candidate) => candidate.sessionId === sessionId)) {
+        return;
+      }
+      yield* Effect.sleep(SESSION_TERMINATION_RECHECK_INTERVAL);
+    }
+  });
+  return Effect.raceFirst(revocationEvent, authoritativeRecheck);
+};
+
 export const websocketRpcRouteLayer = Layer.unwrap(
   Effect.gen(function* () {
     const previewAutomationBroker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
@@ -2330,9 +2362,16 @@ export const websocketRpcRouteLayer = Layer.unwrap(
             ),
           ),
         );
+        // Racing the socket against its own session's termination closes
+        // the established connection promptly on revocation (PLO-421): the
+        // losing RPC socket effect is interrupted, which tears the
+        // WebSocket down through its scope finalizers.
+        const sessionTerminated = awaitSessionTermination(sessions, session.sessionId).pipe(
+          Effect.andThen(failEnvironmentAuthInvalid("invalid_credential")),
+        );
         return yield* Effect.acquireUseRelease(
           sessions.markConnected(session.sessionId),
-          () => rpcWebSocketHttpEffect,
+          () => Effect.raceFirst(rpcWebSocketHttpEffect, sessionTerminated),
           () => sessions.markDisconnected(session.sessionId),
         );
       }).pipe(

@@ -1,10 +1,19 @@
 const { withEntitlementsPlist } = require("expo/config-plugins");
 
-module.exports = function withoutIosPersonalTeamCapabilities(config) {
+function stripPersonalTeamEntitlements(entitlements) {
+  delete entitlements["aps-environment"];
+  delete entitlements["com.apple.developer.applesignin"];
+  delete entitlements["com.apple.security.application-groups"];
+  delete entitlements["com.apple.developer.associated-domains"];
+  return entitlements;
+}
+
+function withoutIosPersonalTeamCapabilities(config) {
   return withEntitlementsPlist(config, (modConfig) => {
-    delete modConfig.modResults["aps-environment"];
-    delete modConfig.modResults["com.apple.developer.applesignin"];
-    delete modConfig.modResults["com.apple.security.application-groups"];
+    stripPersonalTeamEntitlements(modConfig.modResults);
     return modConfig;
   });
-};
+}
+
+module.exports = withoutIosPersonalTeamCapabilities;
+module.exports.stripPersonalTeamEntitlements = stripPersonalTeamEntitlements;

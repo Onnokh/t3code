@@ -10,6 +10,7 @@ permissions:
 jobs:
   prepare-config:
     name: Prepare PR size config
+    if: github.repository == 'pingdotgg/t3code'
     runs-on: ubuntu-24.04
     outputs:
       labels_json: ${{ steps.config.outputs.labels_json }}
@@ -57,7 +58,7 @@ jobs:
   sync-label-definitions:
     name: Sync PR size label definitions
     needs: prepare-config
-    if: github.event_name != 'pull_request_target'
+    if: github.repository == 'pingdotgg/t3code' && github.event_name != 'pull_request_target'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -114,7 +115,7 @@ jobs:
   label:
     name: Label PR size
     needs: prepare-config
-    if: github.event_name == 'pull_request_target'
+    if: github.repository == 'pingdotgg/t3code' && github.event_name == 'pull_request_target'
     runs-on: ubuntu-24.04
     permissions:
       contents: read

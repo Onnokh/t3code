@@ -6,6 +6,7 @@ import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { vi } from "vite-plus/test";
 
 vi.mock("expo-secure-store", () => ({
+  WHEN_UNLOCKED_THIS_DEVICE_ONLY: "WHEN_UNLOCKED_THIS_DEVICE_ONLY",
   getItemAsync: vi.fn(),
   setItemAsync: vi.fn(),
 }));

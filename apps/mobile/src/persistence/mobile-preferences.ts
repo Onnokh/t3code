@@ -34,6 +34,19 @@ export interface Preferences {
    * default flat list — see `resolveThreadListV2Enabled`.
    */
   readonly legacyThreadListEnabled?: boolean;
+  /**
+   * The SEO Area's persisted Site selection (a configured Site ID such as
+   * "missingmounts" or "sleevy"). Device-local per the SEO Read Contract:
+   * the selection applies to every SEO screen and survives app restart.
+   */
+  readonly seoSelectedSite?: string;
+  /**
+   * Set after Devski has offered notification permission contextually
+   * (first successful Run Now or first enabled scheduled Job, PLO-420).
+   * The offer happens once; afterwards the permission state lives in iOS
+   * Settings and is never re-prompted automatically.
+   */
+  readonly automationNotificationsOffered?: boolean;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedErrorClass<MobilePreferencesLoadError>()(
@@ -86,6 +99,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     projectGroupingEnabled?: boolean;
     projectGroupingMode?: SidebarProjectGroupingMode;
     legacyThreadListEnabled?: boolean;
+    seoSelectedSite?: string;
+    automationNotificationsOffered?: boolean;
   } = {};
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
@@ -124,6 +139,12 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (typeof parsed.legacyThreadListEnabled === "boolean") {
     preferences.legacyThreadListEnabled = parsed.legacyThreadListEnabled;
+  }
+  if (typeof parsed.seoSelectedSite === "string") {
+    preferences.seoSelectedSite = parsed.seoSelectedSite;
+  }
+  if (typeof parsed.automationNotificationsOffered === "boolean") {
+    preferences.automationNotificationsOffered = parsed.automationNotificationsOffered;
   }
   return preferences;
 }

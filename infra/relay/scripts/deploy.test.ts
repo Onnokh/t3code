@@ -205,7 +205,7 @@ describe("Devski release workflow tracing boundary", () => {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const workflowPath = yield* path.fromFileUrl(
-        new URL("../../../.github/workflows/devski-ios-release.yml", import.meta.url),
+        new URL("../../../.github/workflows/devski-ios.yml", import.meta.url),
       );
       const workflow = yield* fileSystem.readFileString(workflowPath);
 

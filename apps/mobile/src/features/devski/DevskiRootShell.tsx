@@ -1,121 +1,178 @@
-import { useState, type ComponentProps } from "react";
-import { Pressable, ScrollView, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useEffect, type ComponentProps } from "react";
+import { ActivityIndicator, View } from "react-native";
 import { createStaticNavigation } from "@react-navigation/native";
+import {
+  createNativeBottomTabNavigator,
+  createNativeBottomTabScreen,
+} from "@react-navigation/bottom-tabs/unstable";
+import {
+  createNativeStackNavigator,
+  createNativeStackScreen,
+} from "@react-navigation/native-stack";
 
-import { AppText as Text } from "../../components/AppText";
-import { EmptyState } from "../../components/EmptyState";
 import { RootStack } from "../../Stack";
-import { useRemoteConnectionStatus } from "../../state/use-remote-environment-registry";
-import { useDevskiGateway, type DevskiGatewayState } from "./gateway";
+import { useEnvironments } from "../../state/environments";
+import { ConnectionsNewRouteScreen } from "../connection/ConnectionsNewRouteScreen";
+import { useConnectionController } from "../connection/useConnectionController";
+import { DevicesScreen } from "./devices/DevicesScreen";
+import { AutomationJobDetailScreen } from "./automations/AutomationJobDetailScreen";
+import { AutomationJobEditorScreen } from "./automations/AutomationJobEditorScreen";
+import { AutomationRunDetailScreen } from "./automations/AutomationRunDetailScreen";
+import { AutomationsJobsScreen } from "./automations/AutomationsJobsScreen";
+import { SeoHistoryScreen } from "./seo/SeoHistoryScreen";
+import { SeoHomeScreen } from "./seo/SeoHomeScreen";
+import { SeoLogScreen } from "./seo/SeoLogScreen";
+import { SeoOpportunitiesScreen } from "./seo/SeoOpportunitiesScreen";
+import { SeoPageDetailScreen } from "./seo/SeoPageDetailScreen";
+import { SeoQueriesScreen } from "./seo/SeoQueriesScreen";
+import { SeoRegistryScreen } from "./seo/SeoRegistryScreen";
 
-const Navigation = createStaticNavigation(RootStack);
+const SeoStack = createNativeStackNavigator({
+  screens: {
+    SeoHome: createNativeStackScreen({
+      screen: SeoHomeScreen,
+      options: { title: "SEO" },
+    }),
+    SeoOpportunities: createNativeStackScreen({
+      screen: SeoOpportunitiesScreen,
+      options: { title: "Opportunities" },
+    }),
+    SeoHistory: createNativeStackScreen({
+      screen: SeoHistoryScreen,
+      options: { title: "History" },
+    }),
+    SeoRegistry: createNativeStackScreen({
+      screen: SeoRegistryScreen,
+      options: { title: "Registry" },
+    }),
+    SeoLog: createNativeStackScreen({
+      screen: SeoLogScreen,
+      options: { title: "Log" },
+    }),
+    SeoQueries: createNativeStackScreen({
+      screen: SeoQueriesScreen,
+      options: { title: "Queries" },
+    }),
+    SeoPage: createNativeStackScreen({
+      screen: SeoPageDetailScreen,
+      options: { title: "Page" },
+    }),
+  },
+});
+
+const AutomationsStack = createNativeStackNavigator({
+  screens: {
+    AutomationsHome: createNativeStackScreen({
+      screen: AutomationsJobsScreen,
+      options: { title: "Automations" },
+    }),
+    AutomationJob: createNativeStackScreen({
+      screen: AutomationJobDetailScreen,
+      options: { title: "Job" },
+    }),
+    AutomationJobEditor: createNativeStackScreen({
+      screen: AutomationJobEditorScreen,
+      options: { title: "Job Editor" },
+    }),
+    AutomationRun: createNativeStackScreen({
+      screen: AutomationRunDetailScreen,
+      options: { title: "Run" },
+      // The Automation Notification deep link (PLO-420). The path carries
+      // one opaque Run ID; opening it requires a current Device Session
+      // because an unauthorized shell renders pairing instead of tabs.
+      linking: "automations/runs/:runId",
+    }),
+  },
+});
+
+// Paired Device management (PLO-421). T3's own Settings stack stays
+// untouched inside the Code tab; the plain Devices screen is Devski-owned.
+const DevicesStack = createNativeStackNavigator({
+  screens: {
+    DevicesHome: createNativeStackScreen({
+      screen: DevicesScreen,
+      options: { title: "Devices" },
+    }),
+  },
+});
+
+const DevskiTabs = createNativeBottomTabNavigator({
+  initialRouteName: "Code",
+  screenOptions: { headerShown: false },
+  screens: {
+    Code: createNativeBottomTabScreen({
+      screen: RootStack,
+      options: {
+        title: "Code",
+        tabBarIcon: { type: "sfSymbol", name: "chevron.left.forwardslash.chevron.right" },
+      },
+    }),
+    SEO: createNativeBottomTabScreen({
+      screen: SeoStack,
+      options: {
+        title: "SEO",
+        tabBarIcon: { type: "sfSymbol", name: "chart.line.uptrend.xyaxis" },
+      },
+    }),
+    Automations: createNativeBottomTabScreen({
+      screen: AutomationsStack,
+      options: {
+        title: "Automations",
+        tabBarIcon: {
+          type: "sfSymbol",
+          name: "clock.arrow.trianglehead.counterclockwise.rotate.90",
+        },
+      },
+    }),
+    Devices: createNativeBottomTabScreen({
+      screen: DevicesStack,
+      options: {
+        title: "Devices",
+        tabBarIcon: { type: "sfSymbol", name: "iphone" },
+      },
+    }),
+  },
+});
+
+const Navigation = createStaticNavigation(DevskiTabs);
 type NavigationProps = ComponentProps<typeof Navigation>;
 
-type DevskiTab = "code" | "seo" | "automations";
-
-const TAB_LABELS: ReadonlyArray<{ readonly key: DevskiTab; readonly label: string }> = [
-  { key: "code", label: "Code" },
-  { key: "seo", label: "SEO" },
-  { key: "automations", label: "Automations" },
-];
+const PairingStack = createNativeStackNavigator({
+  initialRouteName: "Pair",
+  screens: {
+    Pair: createNativeStackScreen({
+      screen: ConnectionsNewRouteScreen,
+      initialParams: { mode: "scan_qr" },
+      options: { title: "Pair Devski", headerBackVisible: false },
+    }),
+  },
+});
+const PairingNavigation = createStaticNavigation(PairingStack);
 
 export function DevskiRootShell(props: Pick<NavigationProps, "linking" | "theme">) {
-  const [selectedTab, setSelectedTab] = useState<DevskiTab>("code");
-  const insets = useSafeAreaInsets();
-  const gateway = useDevskiGateway();
-
-  return (
-    <View className="flex-1 bg-screen">
-      <View className="flex-1">
-        <View className="flex-1" style={{ display: selectedTab === "code" ? "flex" : "none" }}>
-          <Navigation {...props} />
-        </View>
-        <View
-          className="flex-1"
-          style={{ display: selectedTab === "seo" ? "flex" : "none" }}
-          accessibilityElementsHidden={selectedTab !== "seo"}
-        >
-          <DevskiPlaceholderScreen
-            area="SEO"
-            detail="Read-only Ranksta data will appear here."
-            gateway={gateway}
-          />
-        </View>
-        <View
-          className="flex-1"
-          style={{ display: selectedTab === "automations" ? "flex" : "none" }}
-          accessibilityElementsHidden={selectedTab !== "automations"}
-        >
-          <DevskiPlaceholderScreen
-            area="Automations"
-            detail="Harness Jobs and Runs will appear here."
-            gateway={gateway}
-          />
-        </View>
-      </View>
-
-      <View
-        className="flex-row border-t border-border bg-sheet"
-        style={{ paddingBottom: Math.max(insets.bottom, 8) }}
-      >
-        {TAB_LABELS.map((tab) => {
-          const isSelected = selectedTab === tab.key;
-          return (
-            <Pressable
-              key={tab.key}
-              accessibilityLabel={tab.label}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: isSelected }}
-              className="flex-1 items-center px-2 py-3 active:opacity-70"
-              onPress={() => setSelectedTab(tab.key)}
-            >
-              <Text className={isSelected ? "font-t3-bold text-primary" : "text-foreground-muted"}>
-                {tab.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
+  const { environments, isReady } = useEnvironments();
+  const { removeEnvironment } = useConnectionController();
+  const authorizedEnvironments = environments.filter(
+    (environment) => environment.connection.failureReason !== "authentication",
   );
-}
 
-function DevskiPlaceholderScreen(props: {
-  readonly area: "SEO" | "Automations";
-  readonly detail: string;
-  readonly gateway: DevskiGatewayState;
-}) {
-  const { connectedEnvironments, connectionError, connectionState } = useRemoteConnectionStatus();
-  const connectionSummary =
-    connectionError ??
-    (connectedEnvironments.length === 0
-      ? "No Code environment is paired on this device."
-      : `${connectedEnvironments.length} Code environment${connectedEnvironments.length === 1 ? "" : "s"} available (${connectionState}).`);
-  const serviceKey = props.area === "SEO" ? "seo" : "automations";
+  useEffect(() => {
+    for (const environment of environments) {
+      if (environment.connection.failureReason === "authentication") {
+        void removeEnvironment(environment.environmentId);
+      }
+    }
+  }, [environments, removeEnvironment]);
 
-  return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      className="flex-1 bg-screen"
-      contentContainerStyle={{ gap: 12, paddingHorizontal: 20, paddingVertical: 20 }}
-    >
-      <Text className="text-xl font-t3-bold text-foreground">{props.area}</Text>
-      <Text className="text-sm leading-normal text-foreground-muted">{props.detail}</Text>
-      <Text className="mt-2 font-t3-bold text-foreground">Digital Home connection</Text>
-      <Text className="text-sm leading-normal text-foreground-muted">{connectionSummary}</Text>
-      <Text className="font-t3-bold text-foreground">Gateway service health</Text>
-      <Text className="text-sm leading-normal text-foreground-muted">{props.gateway.message}</Text>
-      {props.gateway.status === "ready" ? (
-        <Text className="text-sm leading-normal text-foreground-muted">
-          {props.area}: {props.gateway.capabilities.capabilities[serviceKey].status}.
-        </Text>
-      ) : null}
-      <EmptyState
-        variant="plain"
-        title={`${props.area} is coming next`}
-        detail="This functional shell uses the same paired Device Session as Code."
-      />
-    </ScrollView>
-  );
+  if (!isReady) {
+    return (
+      <View className="flex-1 items-center justify-center bg-screen">
+        <ActivityIndicator />
+      </View>
+    );
+  }
+  if (authorizedEnvironments.length === 0) {
+    return <PairingNavigation theme={props.theme} />;
+  }
+  return <Navigation {...props} />;
 }

@@ -263,6 +263,75 @@ describe("AgentActivity widget layout", () => {
     expect(JSON.stringify(layout.minimal)).toContain("xmark.octagon.fill");
   });
 
+  it("renders Automation Runs with the Run vocabulary and terminal phases (PLO-420)", () => {
+    const automationRow = (overrides: Partial<AgentActivityRowProps>) =>
+      makeRow({
+        source: "automation",
+        environmentId: "automations",
+        projectTitle: "Automation",
+        modelTitle: "Run",
+        deepLink: "/automations/runs/run-1",
+        ...overrides,
+      });
+
+    const active = AgentActivity(
+      {
+        ...props,
+        activeCount: 1,
+        activities: [
+          automationRow({ threadId: "run-1", threadTitle: "nightly-sync", status: "Running" }),
+        ],
+      },
+      environment as never,
+    );
+    const activeBanner = JSON.stringify(active.banner);
+    expect(activeBanner).toContain("1 active Run");
+    expect(activeBanner).not.toContain("agent");
+    expect(activeBanner).toContain("nightly-sync");
+    expect(activeBanner).toContain('{"widgetURL":"devski://automations/runs/run-1"}');
+
+    // A timed-out Run alerts like a failure: red tint, failure priority.
+    const timedOut = AgentActivity(
+      {
+        ...props,
+        activeCount: 0,
+        activities: [
+          automationRow({
+            threadId: "run-2",
+            threadTitle: "slow-job",
+            phase: "timed_out",
+            status: "Timed out",
+          }),
+          automationRow({
+            threadId: "run-3",
+            threadTitle: "good-job",
+            phase: "succeeded",
+            status: "Succeeded",
+          }),
+        ],
+      },
+      environment as never,
+    );
+    const timedOutBanner = JSON.stringify(timedOut.banner);
+    expect(timedOutBanner).toContain("Automation Run failed");
+    expect(timedOutBanner).toContain("#fca5a5"); // red-300: timed_out alerts like failed
+    expect(timedOutBanner).toContain("#6ee7b7"); // emerald-300: succeeded
+
+    // A mixed aggregate keeps the existing agent wording.
+    const mixed = AgentActivity(
+      {
+        ...props,
+        activeCount: 2,
+        activities: [
+          makeRow({}),
+          automationRow({ threadId: "run-4", threadTitle: "nightly-sync", status: "Running" }),
+        ],
+      },
+      environment as never,
+    );
+    expect(JSON.stringify(mixed.banner)).toContain("2 active agents");
+  });
+
   it("renders up to five rows in the banner", () => {
     const layout = AgentActivity(
       {

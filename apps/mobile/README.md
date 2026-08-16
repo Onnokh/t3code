@@ -81,6 +81,9 @@ vp run config:preview
 pnpm verify:release
 ```
 
+For the complete local server, install, one-time pairing, Code-thread, and three-tab acceptance
+smoke, follow [`../../docs/operations/devski-local-smoke.md`](../../docs/operations/devski-local-smoke.md).
+
 Run static checks for mobile native code:
 
 ```bash
@@ -93,7 +96,7 @@ The native lint task runs SwiftLint for Swift plus ktlint and detekt for Kotlin.
 
 Preview builds are for local validation. Production OTA updates are disabled. TestFlight
 publication is allowed only through the protected, manually dispatched
-`.github/workflows/devski-ios-release.yml` workflow and its `devski-production` environment.
+`.github/workflows/devski-ios.yml` workflow and its `devski-production` environment.
 
 Create a PR preview dev-client build manually:
 

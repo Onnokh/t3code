@@ -261,7 +261,9 @@ export function serializeUpdateManifest(
     lines.push(`    size: ${file.size}`);
   }
 
-  for (const key of Object.keys(manifest.extras).toSorted()) {
+  // .sort() on the keys() copy, not .toSorted(): scripts/lib is guarded as
+  // mobile-importable source and Hermes doesn't ship the ES2023 method.
+  for (const key of Object.keys(manifest.extras).sort()) {
     const value = manifest.extras[key];
     if (value === undefined) {
       throw new Error(

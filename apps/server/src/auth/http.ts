@@ -429,6 +429,23 @@ export const authHttpApiLayer = HttpApiBuilder.group(
             failEnvironmentInternal("client_session_revoke_failed", error),
           ),
         ),
+      )
+      .handle(
+        "signOut",
+        Effect.fn("environment.auth.signOut")(
+          function* (args) {
+            yield* annotateEnvironmentRequest(args.endpoint.name);
+            // Deliberately no scope requirement: revoking your own session is
+            // the least-privilege operation and must work for standard-scope
+            // paired devices (Devski "Sign out this device").
+            const session = yield* EnvironmentAuthenticatedPrincipal;
+            const revoked = yield* serverAuth.revokeSession(session.sessionId);
+            return { revoked };
+          },
+          Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
+            failEnvironmentInternal("client_session_revoke_failed", error),
+          ),
+        ),
       );
   }),
 );

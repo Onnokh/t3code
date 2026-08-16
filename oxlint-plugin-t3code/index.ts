@@ -2,6 +2,7 @@ import { definePlugin } from "@oxlint/plugins";
 
 import namespaceNodeImports from "./rules/namespace-node-imports.ts";
 import noGlobalProcessRuntime from "./rules/no-global-process-runtime.ts";
+import noHermesIncompatibleMethods from "./rules/no-hermes-incompatible-methods.ts";
 import noInlineSchemaCompile from "./rules/no-inline-schema-compile.ts";
 import noManualEffectRuntimeInTests from "./rules/no-manual-effect-runtime-in-tests.ts";
 
@@ -12,6 +13,7 @@ export default definePlugin({
   rules: {
     "namespace-node-imports": namespaceNodeImports,
     "no-global-process-runtime": noGlobalProcessRuntime,
+    "no-hermes-incompatible-methods": noHermesIncompatibleMethods,
     "no-inline-schema-compile": noInlineSchemaCompile,
     "no-manual-effect-runtime-in-tests": noManualEffectRuntimeInTests,
   },

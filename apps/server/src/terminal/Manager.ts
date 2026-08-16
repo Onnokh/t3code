@@ -1173,7 +1173,9 @@ function normalizedRuntimeEnv(
   if (!env) return null;
   const entries = Object.entries(env);
   if (entries.length === 0) return null;
-  return Object.fromEntries(entries.toSorted(([left], [right]) => left.localeCompare(right)));
+  // .sort() on a copy, not .toSorted(): kept to the workspace convention
+  // because Hermes doesn't ship the ES2023 method.
+  return Object.fromEntries([...entries].sort(([left], [right]) => left.localeCompare(right)));
 }
 
 interface TerminalManagerOptions {
