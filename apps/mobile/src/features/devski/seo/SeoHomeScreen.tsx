@@ -8,7 +8,7 @@ import { ErrorBanner } from "../../../components/ErrorBanner";
 import { NativeHeaderToolbar } from "../../../native/StackHeader";
 import { FieldRow, ListRow, SectionTitle } from "../automations/AutomationsUi";
 import { useSeoClient, useSeoRead } from "./seo-api";
-import { readSeoCacheEntry, writeSeoCacheEntry } from "./seo-cache";
+import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
   describeIndexState,
   displayableEnvelope,
@@ -31,7 +31,7 @@ type SitesState =
   | { readonly kind: "error"; readonly message: string }
   | { readonly kind: "ready"; readonly sites: readonly SeoSite[] };
 
-const SITES_CACHE_KEY = "sites";
+const SITES_CACHE_KEY = "seo:sites";
 
 const SECTION_LINKS: ReadonlyArray<{
   readonly screen: keyof Omit<SeoStackParamList, "SeoPage" | "SeoHome">;
@@ -73,7 +73,7 @@ export function SeoHomeScreen() {
   // The Site list is what the switcher is made of, so it hydrates too:
   // returning to this Area should not empty the menu for a round trip.
   const [sitesState, setSitesState] = useState<SitesState>(() => {
-    const cached = readSeoCacheEntry<readonly SeoSite[]>(SITES_CACHE_KEY);
+    const cached = readDevskiCacheEntry<readonly SeoSite[]>(SITES_CACHE_KEY);
     return cached === null ? { kind: "loading" } : { kind: "ready", sites: cached };
   });
   const [refreshing, setRefreshing] = useState(false);
@@ -82,7 +82,7 @@ export function SeoHomeScreen() {
     if (!client) return;
     const result = await client.sites();
     if (result.kind === "ok") {
-      writeSeoCacheEntry(SITES_CACHE_KEY, result.value);
+      writeDevskiCacheEntry(SITES_CACHE_KEY, result.value);
       setSitesState({ kind: "ready", sites: result.value });
     } else setSitesState({ kind: "error", message: summarizeSeoError(result) });
   }, [client]);

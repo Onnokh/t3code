@@ -14,7 +14,8 @@ import {
   useArmDevskiActivityForAutomationRun,
   useAutomationNotificationOffer,
 } from "../notifications/automationNotifications";
-import { useAutomationsClient } from "./automations-api";
+import { automationsCacheKeys, useAutomationsClient } from "./automations-api";
+import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
   availableLifecycleActions,
   deleteBlockedByActiveRun,
@@ -37,14 +38,15 @@ import { CodeBlock, FieldRow, ListRow, PlainButton, SectionTitle } from "./Autom
 
 type Params = { readonly jobId: string; readonly name?: string };
 
+type CachedJobDetail = {
+  readonly job: AutomationJob;
+  readonly runs: readonly AutomationRun[];
+};
+
 type LoadState =
   | { readonly kind: "loading" }
   | { readonly kind: "error"; readonly message: string }
-  | {
-      readonly kind: "ready";
-      readonly job: AutomationJob;
-      readonly runs: readonly AutomationRun[];
-    };
+  | ({ readonly kind: "ready" } & CachedJobDetail);
 
 const ACTIVE_POLL_MS = 3_000;
 
@@ -69,7 +71,10 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
   const client = useAutomationsClient();
   const offerNotifications = useAutomationNotificationOffer();
   const armDevskiActivity = useArmDevskiActivityForAutomationRun();
-  const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [state, setState] = useState<LoadState>(() => {
+    const cached = readDevskiCacheEntry<CachedJobDetail>(automationsCacheKeys.job(jobId));
+    return cached === null ? { kind: "loading" } : { kind: "ready", ...cached };
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
@@ -83,7 +88,9 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
       client.listRuns(jobId),
     ]);
     if (jobResult.kind === "ok" && runsResult.kind === "ok") {
-      setState({ kind: "ready", job: jobResult.value, runs: runsResult.value });
+      const detail = { job: jobResult.value, runs: runsResult.value };
+      writeDevskiCacheEntry(automationsCacheKeys.job(jobId), detail);
+      setState({ kind: "ready", ...detail });
     } else {
       setState({
         kind: "error",

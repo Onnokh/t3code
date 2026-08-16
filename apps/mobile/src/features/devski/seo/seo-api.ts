@@ -4,7 +4,11 @@ import { useFocusEffect } from "@react-navigation/native";
 
 import { useSavedRemoteConnection } from "../../../state/use-remote-environment-registry";
 import { useWorkspaceState } from "../../../state/workspace";
-import { clearSeoCache, readSeoCacheEntry, writeSeoCacheEntry } from "./seo-cache";
+import {
+  clearDevskiCache,
+  readDevskiCacheEntry,
+  writeDevskiCacheEntry,
+} from "../devski-read-cache";
 import {
   applySeoResult,
   interpretSeoResponse,
@@ -132,7 +136,7 @@ export function useSeoClient(): SeoClient | null {
   // A different environment or a re-issued credential invalidates every
   // cached read: the next hydration must not show the old session's data.
   useEffect(() => {
-    clearSeoCache();
+    clearDevskiCache();
   }, [bearerToken, httpBaseUrl]);
 
   return useMemo(() => {
@@ -141,8 +145,14 @@ export function useSeoClient(): SeoClient | null {
   }, [bearerToken, httpBaseUrl]);
 }
 
+// Screens name their reads; the Area owns the namespace, so nothing else
+// can be dropped or hydrated by a key an SEO screen happens to choose.
+function seoCacheKey(key: string | null): string | null {
+  return key === null ? null : `seo:${key}`;
+}
+
 function hydratedRead<T>(cacheKey: string | null): SeoRead<T> {
-  const cached = readSeoCacheEntry<SeoEnvelope<T>>(cacheKey);
+  const cached = readDevskiCacheEntry<SeoEnvelope<T>>(seoCacheKey(cacheKey));
   return cached === null ? { kind: "loading" } : { kind: "ready", envelope: cached };
 }
 
@@ -171,7 +181,7 @@ export function useSeoRead<T>(
     const ticket = ++generation.current;
     const result = await fetcher();
     if (generation.current !== ticket) return;
-    if (result.kind === "ok") writeSeoCacheEntry(cacheKey, result.value);
+    if (result.kind === "ok") writeDevskiCacheEntry(seoCacheKey(cacheKey), result.value);
     setRead(applySeoResult(readRef.current, result));
   }, [cacheKey, fetcher]);
 

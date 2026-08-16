@@ -6,7 +6,8 @@ import { AppText as Text } from "../../../components/AppText";
 import { ErrorBanner } from "../../../components/ErrorBanner";
 import { uuidv4 } from "../../../lib/uuid";
 import { useAutomationNotificationOffer } from "../notifications/automationNotifications";
-import { useAutomationsClient } from "./automations-api";
+import { automationsCacheKeys, useAutomationsClient } from "./automations-api";
+import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
   describeRunState,
   formatByteLength,
@@ -46,12 +47,19 @@ const EMPTY_LOG: LogFollow = {
 export function AutomationRunDetailScreen({ route }: StaticScreenProps<Params>) {
   const { runId } = route.params;
   const client = useAutomationsClient();
-  const [run, setRun] = useState<AutomationRun | null>(null);
+  // The Run itself hydrates; the log does not. A log is followed by cursor
+  // from wherever this screen starts, so replaying a cached prefix would
+  // either duplicate lines or hide the ones written since.
+  const [run, setRun] = useState<AutomationRun | null>(() =>
+    readDevskiCacheEntry<AutomationRun>(automationsCacheKeys.run(runId)),
+  );
   const [error, setError] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [log, setLog] = useState<LogFollow>(EMPTY_LOG);
-  const [artifacts, setArtifacts] = useState<readonly ArtifactSummary[]>([]);
+  const [artifacts, setArtifacts] = useState<readonly ArtifactSummary[]>(
+    () => readDevskiCacheEntry<AutomationRun>(automationsCacheKeys.run(runId))?.artifacts ?? [],
+  );
   const [stopping, setStopping] = useState(false);
   const stopKey = useRef<string | null>(null);
   const logBusy = useRef(false);
@@ -61,6 +69,7 @@ export function AutomationRunDetailScreen({ route }: StaticScreenProps<Params>) 
     if (!client) return;
     const result = await client.getRun(runId);
     if (result.kind === "ok") {
+      writeDevskiCacheEntry(automationsCacheKeys.run(runId), result.value);
       setRun(result.value);
       setError(null);
       if (result.value.artifacts) setArtifacts(result.value.artifacts);

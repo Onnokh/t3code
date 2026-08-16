@@ -5,7 +5,8 @@ import { useFocusEffect, useNavigation, type NavigationProp } from "@react-navig
 import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
 import { ErrorBanner } from "../../../components/ErrorBanner";
-import { useAutomationsClient } from "./automations-api";
+import { automationsCacheKeys, useAutomationsClient } from "./automations-api";
+import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
   describeJobSchedule,
   describeRunSummary,
@@ -37,14 +38,19 @@ function jobLines(job: AutomationJob): string[] {
 export function AutomationsJobsScreen() {
   const navigation = useNavigation<NavigationProp<AutomationsStackParamList>>();
   const client = useAutomationsClient();
-  const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [state, setState] = useState<LoadState>(() => {
+    const cached = readDevskiCacheEntry<readonly AutomationJob[]>(automationsCacheKeys.jobs);
+    return cached === null ? { kind: "loading" } : { kind: "ready", jobs: cached };
+  });
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     if (!client) return;
     const result = await client.listJobs();
-    if (result.kind === "ok") setState({ kind: "ready", jobs: result.value });
-    else if (result.kind === "pairing-required") {
+    if (result.kind === "ok") {
+      writeDevskiCacheEntry(automationsCacheKeys.jobs, result.value);
+      setState({ kind: "ready", jobs: result.value });
+    } else if (result.kind === "pairing-required") {
       setState({
         kind: "error",
         message: "This Device Session expired or was revoked. Pair this device again.",

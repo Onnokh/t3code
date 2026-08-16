@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { useSavedRemoteConnection } from "../../../state/use-remote-environment-registry";
 import { useWorkspaceState } from "../../../state/workspace";
+import { clearDevskiCache, dropDevskiCacheEntries } from "../devski-read-cache";
 import type { JobDefinitionInput } from "./automations-authoring";
 import {
   interpretAutomationsResponse,
@@ -247,6 +248,53 @@ export function createAutomationsClient(baseUrl: string, bearerToken: string): A
   };
 }
 
+const AUTOMATIONS_CACHE_NAMESPACE = "automations:";
+
+/** Cache keys for the reads Automations screens hydrate from. */
+export const automationsCacheKeys = {
+  jobs: `${AUTOMATIONS_CACHE_NAMESPACE}jobs`,
+  job: (jobId: string) => `${AUTOMATIONS_CACHE_NAMESPACE}job:${jobId}`,
+  run: (runId: string) => `${AUTOMATIONS_CACHE_NAMESPACE}run:${runId}`,
+} as const;
+
+/**
+ * Wraps every mutating method so a successful one drops the Area's cached
+ * reads.
+ *
+ * Jobs and Runs change under the user's own hand, unlike SEO's read-only
+ * data. Hydrating a Job list that predates the Job just created — or a Run
+ * that predates the Stop just confirmed — would show the user their own
+ * action being undone, so a mutation invalidates rather than repairs: the
+ * revalidation that always follows supplies the authoritative state.
+ * Sitting at the client boundary makes this impossible to forget when a
+ * new mutation is added to a screen.
+ */
+function invalidatingOnMutation(client: AutomationsClient): AutomationsClient {
+  function afterMutation<Args extends unknown[], T>(
+    method: (...args: Args) => Promise<AutomationsResult<T>>,
+  ): (...args: Args) => Promise<AutomationsResult<T>> {
+    return async (...args: Args) => {
+      const result = await method(...args);
+      if (result.kind === "ok") dropDevskiCacheEntries(AUTOMATIONS_CACHE_NAMESPACE);
+      return result;
+    };
+  }
+
+  return {
+    ...client,
+    createJob: afterMutation(client.createJob),
+    updateJob: afterMutation(client.updateJob),
+    enableJob: afterMutation(client.enableJob),
+    disableJob: afterMutation(client.disableJob),
+    archiveJob: afterMutation(client.archiveJob),
+    restoreJob: afterMutation(client.restoreJob),
+    duplicateJob: afterMutation(client.duplicateJob),
+    deleteJob: afterMutation(client.deleteJob),
+    runNow: afterMutation(client.runNow),
+    cancelRun: afterMutation(client.cancelRun),
+  };
+}
+
 /**
  * Resolves the Automations client for the paired environment, or null while
  * this device is unpaired. Uses the same Device Session bearer that Code and
@@ -262,8 +310,14 @@ export function useAutomationsClient(): AutomationsClient | null {
   const bearerToken = connection?.bearerToken;
   const httpBaseUrl = connection?.httpBaseUrl;
 
+  // A different environment or a re-issued credential invalidates every
+  // cached read: the next hydration must not show the old session's data.
+  useEffect(() => {
+    clearDevskiCache();
+  }, [bearerToken, httpBaseUrl]);
+
   return useMemo(() => {
     if (!bearerToken || !httpBaseUrl) return null;
-    return createAutomationsClient(httpBaseUrl, bearerToken);
+    return invalidatingOnMutation(createAutomationsClient(httpBaseUrl, bearerToken));
   }, [bearerToken, httpBaseUrl]);
 }
