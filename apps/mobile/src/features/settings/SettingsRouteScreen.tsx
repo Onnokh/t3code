@@ -123,6 +123,7 @@ function LocalSettingsRouteScreen() {
             value={`${environmentCount}`}
             target="SettingsEnvironments"
           />
+          <SettingsRow icon="iphone" label="Devices" target="SettingsDevices" />
         </SettingsSection>
 
         <GeneralSettingsSection />
@@ -471,6 +472,7 @@ function ConfiguredSettingsRouteScreen() {
             value={`${environmentCount}`}
             target="SettingsEnvironments"
           />
+          <SettingsRow icon="iphone" label="Devices" target="SettingsDevices" />
           <SettingsSwitchRow
             icon="bell.badge"
             label="Device Notifications"

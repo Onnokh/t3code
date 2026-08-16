@@ -14,7 +14,6 @@ import { RootStack } from "../../Stack";
 import { useEnvironments } from "../../state/environments";
 import { ConnectionsNewRouteScreen } from "../connection/ConnectionsNewRouteScreen";
 import { useConnectionController } from "../connection/useConnectionController";
-import { DevicesScreen } from "./devices/DevicesScreen";
 import { AutomationJobDetailScreen } from "./automations/AutomationJobDetailScreen";
 import { AutomationJobEditorScreen } from "./automations/AutomationJobEditorScreen";
 import { AutomationRunDetailScreen } from "./automations/AutomationRunDetailScreen";
@@ -85,17 +84,6 @@ const AutomationsStack = createNativeStackNavigator({
   },
 });
 
-// Paired Device management (PLO-421). T3's own Settings stack stays
-// untouched inside the Code tab; the plain Devices screen is Devski-owned.
-const DevicesStack = createNativeStackNavigator({
-  screens: {
-    DevicesHome: createNativeStackScreen({
-      screen: DevicesScreen,
-      options: { title: "Devices" },
-    }),
-  },
-});
-
 const DevskiTabs = createNativeBottomTabNavigator({
   initialRouteName: "Code",
   screenOptions: { headerShown: false },
@@ -122,13 +110,6 @@ const DevskiTabs = createNativeBottomTabNavigator({
           type: "sfSymbol",
           name: "clock.arrow.trianglehead.counterclockwise.rotate.90",
         },
-      },
-    }),
-    Devices: createNativeBottomTabScreen({
-      screen: DevicesStack,
-      options: {
-        title: "Devices",
-        tabBarIcon: { type: "sfSymbol", name: "iphone" },
       },
     }),
   },

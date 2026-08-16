@@ -19,6 +19,7 @@ import { getCompactBrandHeaderOptions } from "./components/CompactBrandTitle";
 import { ArchivedThreadsRouteScreen } from "./features/archive/ArchivedThreadsRouteScreen";
 import { useAgentNotificationNavigation } from "./features/agent-awareness/notificationNavigation";
 import { ConnectOnboardingRouteScreen } from "./features/cloud/ConnectOnboardingRouteScreen";
+import { DevicesScreen } from "./features/devski/devices/DevicesScreen";
 import { useConnectOnboardingNavigation } from "./features/cloud/connectOnboardingNavigation";
 import { ThreadFilesTreeScreen, ThreadFileScreen } from "./features/files/ThreadFilesRouteScreen";
 import { AdaptiveWorkspaceLayout } from "./features/layout/AdaptiveWorkspaceLayout";
@@ -154,6 +155,15 @@ const SettingsContentStack = createNativeStackNavigator({
       linking: "environments",
       options: {
         title: "Environments",
+      },
+    }),
+    // Devski fork (PLO-421): Paired Devices sit beside Environments here rather
+    // than in a fourth tab, so the shell keeps one settings surface.
+    SettingsDevices: createNativeStackScreen({
+      screen: DevicesScreen,
+      linking: "devices",
+      options: {
+        title: "Devices",
       },
     }),
     SettingsEnvironmentNew: createNativeStackScreen({
