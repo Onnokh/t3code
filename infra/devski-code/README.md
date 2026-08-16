@@ -140,11 +140,15 @@ and Code threads run against it. Sessions whose directory resolves outside
 
 ## Pairing
 
-First boot prints a pairing URL in the container log. That URL is one-shot: the
-first client that opens it consumes the token, and no later boot prints it
-again.
+First boot prints a `Pairing URL` in the container log, but that URL does not
+work in this deployment. It carries the container-internal address (for example
+`http://172.18.0.15:3773`), which resolves nowhere outside the Docker network,
+and this image ships no web UI, so T3 answers 503
+(`No static directory configured and no dev URL set`) on `/pair`. The Gateway
+does not proxy `/pair` either. Take the token out of that URL if you want it,
+or mint a fresh credential below.
 
-Mint every later pairing credential inside the container with the auth control
+Mint every pairing credential inside the container with the auth control
 plane, which writes directly to T3's auth store:
 
 ```sh
@@ -152,9 +156,10 @@ node apps/server/src/bin.ts auth pairing create --base-dir /data/t3 --label ipho
 ```
 
 It prints the credential id, the 12-character code, and the expiry. The
-default TTL is 5 minutes; pass `--ttl 15m` for more time. Add
-`--base-url https://devski.onkie.dev` to also print a ready
-`https://devski.onkie.dev/pair#token=...` link, and `--json` for scripts.
+default TTL is 5 minutes; pass `--ttl 15m` for more time, and `--json` for
+scripts. Do not pass `--base-url https://devski.onkie.dev` on this deployment:
+it only prints a `https://devski.onkie.dev/pair#token=...` link, and that path
+404s at the Gateway for the reason above. Hand over the code, not a link.
 
 Enter the 12-character code in Devski (the app already defaults to
 `https://devski.onkie.dev`), or run the Gateway smoke from
@@ -172,9 +177,16 @@ never reveals a code; `revoke` takes an id from that list.
 
 Do not use `t3 pair` in this container. It discovers the server out of band
 through the `userdata/server-runtime.json` file a live server writes next to
-its database, and then probes the origin recorded there. That file is absent on
-this deployment, so `pair` fails with
-`NoRunningServerError: No running T3 Code server found.` while the server is
-healthy, and it has no flag that points it at a known-running server.
+its database, and then probes the origin recorded there. The server does write
+that file at activation, but a rolling deploy removes it again: Coolify starts
+the new container and waits for its healthcheck before it stops the old one,
+and the shutdown finalizer of the old container deletes the shared path on the
+`/data/t3` volume without a check that it still owns the file. The file is
+therefore absent while the server is healthy, and nothing is logged because the
+removal succeeded. `pair` then fails with
+`NoRunningServerError: No running T3 Code server found.`, and it has no flag
+that points it at a known-running server. `pair` also requires the recorded PID
+to be alive in the caller's own PID namespace, which never holds from another
+container.
 `auth pairing create` needs no discovery and mints the same standard-scope
 client credential that `pair` would.
