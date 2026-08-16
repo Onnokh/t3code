@@ -49,12 +49,16 @@ RUN pnpm install --frozen-lockfile --filter t3...
 # instance persists there without any settings change.
 # DEVSKI_CLAUDE_CODE_VERSION lets claude-runtime-smoke.mjs verify the pin at
 # runtime; DISABLE_AUTOUPDATER stops the CLI from drifting off it.
+# IS_SANDBOX: the container is the sandbox boundary; without it Claude Code
+# refuses bypassPermissions ("Full" access mode) for the root user and every
+# Full-mode turn fails at turn/setPermissionMode.
 ENV TZ=Europe/Amsterdam \
     NODE_ENV=production \
     T3CODE_HOME=/data/t3 \
     CLAUDE_CONFIG_DIR=/data/claude \
     DEVSKI_CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION} \
-    DISABLE_AUTOUPDATER=1
+    DISABLE_AUTOUPDATER=1 \
+    IS_SANDBOX=1
 
 # In-container deployment smoke: pinned Claude runtime + /data/claude
 # persistence and permissions. Run it with:
