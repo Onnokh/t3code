@@ -691,7 +691,12 @@ export function AddProjectRepositoryScreen(props: {
         StackActions.push("AddProjectDestination", {
           environmentId: environment.environmentId,
           source,
-          remoteUrl: repository.sshUrl,
+          // HTTPS, not `sshUrl`: a looked-up repository is cloned by the
+          // environment, and a server has git credential helpers far more
+          // often than it has an SSH key and a known_hosts entry. Without
+          // them an SSH clone dies on `Host key verification failed`, while
+          // HTTPS resolves the credential at call time.
+          remoteUrl: repository.url,
           repositoryTitle: repository.nameWithOwner,
           repositoryName: getCloneDirectoryName(repository.nameWithOwner),
         }),
