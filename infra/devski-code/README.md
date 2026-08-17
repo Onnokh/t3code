@@ -124,7 +124,10 @@ Coolify configuration for the private OpenCode 2 sidecar:
 - persistent volumes: `/data/opencode` (interactive OpenCode state) and the
   SAME `/workspaces/code` volume as the T3 container;
 - environment: `OPENCODE_SERVER_PASSWORD` (Coolify secret) — the server's
-  Basic-auth password;
+  Basic-auth password; `EXECUTOR_MCP_TOKEN` (Coolify secret) — the bearer for
+  the Executor MCP the image's `opencode.json` declares. Leave it unset and the
+  `executor` server reports failed, which is visible; the image holds no token
+  of its own;
 - health check: authenticated `GET /api/health` on port `4096` (built into
   the image).
 

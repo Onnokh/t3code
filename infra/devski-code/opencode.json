@@ -1,4 +1,14 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "disabled_providers": ["gitlab"]
+  "disabled_providers": ["gitlab"],
+  "skills": ["/opt/agent-skills/.agents/skills"],
+  "mcp": {
+    "servers": {
+      "executor": {
+        "type": "remote",
+        "url": "https://executor.onkie.dev/mcp",
+        "headers": { "Authorization": "Bearer {env:EXECUTOR_MCP_TOKEN}" }
+      }
+    }
+  }
 }

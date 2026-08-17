@@ -64,6 +64,20 @@ RUN git config --system credential."https://github.com".helper '!gh auth git-cre
 # postinstall selects the platform binary.
 RUN bun install -g --trust @opencode-ai/cli@0.0.0-next-17199
 
+# The public skill library, installed with the `skills` CLI — the same command
+# the library's README gives and the Digital Home Harness image runs, so a Code
+# session and an Agent Job know the same skills instead of each image inventing
+# its own copy of the library layout.
+#
+# HOME picks the target: the CLI writes $HOME/.agents/skills. It stays in /opt
+# because /data/opencode below is a volume, and a mount masks whatever the image
+# put there. `skills add` takes no git ref, so the library resolves to its
+# default branch at build time and .agents/.skill-lock.json records what landed.
+ARG SKILLS_CLI_VERSION=1.5.22
+RUN HOME=/opt/agent-skills bunx --bun skills@${SKILLS_CLI_VERSION} \
+      add Onnokh/skills --agent opencode --skill '*' --copy --global --yes \
+ && test -d /opt/agent-skills/.agents/skills
+
 # Interactive OpenCode state (sessions, auth, config) lives on its own
 # volume, owned by this container only.
 ENV XDG_DATA_HOME=/data/opencode/share \
@@ -72,7 +86,13 @@ ENV XDG_DATA_HOME=/data/opencode/share \
     XDG_CACHE_HOME=/var/cache/xdg
 
 # Operator-owned OpenCode configuration, declared in this repository instead
-# of edited inside the running container. It disables the `gitlab` provider:
+# of edited inside the running container. It is the one place this container
+# says what a Code session can reach: the installed skill library above, and
+# the Executor MCP that fronts every external integration. The bearer comes
+# from EXECUTOR_MCP_TOKEN at run time, so the image holds no secret; without it
+# the `executor` server reports failed instead of quietly not existing.
+#
+# It also disables the `gitlab` provider:
 # OpenCode finds that provider from the container environment, but this
 # deployment holds no GitLab Duo entitlement, so its models cannot serve a
 # Run. They still filled 23 of the 62 Agent Job model choices and pushed the
