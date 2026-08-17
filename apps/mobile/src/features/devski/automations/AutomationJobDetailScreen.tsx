@@ -10,10 +10,7 @@ import {
 import { AppText as Text } from "../../../components/AppText";
 import { ErrorBanner } from "../../../components/ErrorBanner";
 import { uuidv4 } from "../../../lib/uuid";
-import {
-  useArmDevskiActivityForAutomationRun,
-  useAutomationNotificationOffer,
-} from "../notifications/automationNotifications";
+import { useAutomationNotificationOffer } from "../notifications/automationNotifications";
 import { automationsCacheKeys, useAutomationsClient } from "./automations-api";
 import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
@@ -85,7 +82,6 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
   const navigation = useNavigation<NavigationProp<AutomationsStackParamList>>();
   const client = useAutomationsClient();
   const offerNotifications = useAutomationNotificationOffer();
-  const armDevskiActivity = useArmDevskiActivityForAutomationRun();
   const [state, setState] = useState<LoadState>(() => {
     const cached = readDevskiCacheEntry<CachedJobDetail>(automationsCacheKeys.job(jobId));
     return cached === null ? { kind: "loading" } : { kind: "ready", ...cached };
@@ -144,15 +140,9 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
       setTriggering(false);
       if (result.kind === "ok") {
         runNowKey.current = null;
-        // Show this Run on the unified Devski Activity (best-effort;
-        // ActivityKit being unavailable never affects the Run). The
-        // accepted state comes along because a Run can already be
-        // terminal here — the Harness fails one in milliseconds.
-        armDevskiActivity({
-          jobName: job.name,
-          runId: result.value.run.id,
-          runState: result.value.run.state,
-        });
+        // No card is started here. The Gateway starts one for every Run
+        // from the lifecycle event, including the Runs nobody is watching
+        // — and a second starter would mean two cards for one Run.
         void load();
         openRun(result.value.run.id);
         return;
@@ -175,7 +165,7 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
       }
       setBanner(result.error.message);
     },
-    [armDevskiActivity, client, load, openRun],
+    [client, load, openRun],
   );
 
   const onRunNow = useCallback(

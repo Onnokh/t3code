@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { AutomationJob, RunState } from "../automations/automations-state";
 import {
   ARMED_RUN_GRACE_MS,
+  TERMINAL_RETENTION_MS,
   automationActivityPhase,
   automationActivityRuns,
   buildAutomationActivityProps,
@@ -11,6 +12,8 @@ import {
 } from "./automation-activity";
 
 const NOW = Date.parse("2026-08-16T12:00:00.000Z");
+/** Older than the retention window, so the card is safe to clear. */
+const staleOutcome = new Date(NOW - TERMINAL_RETENTION_MS - 60_000).toISOString();
 
 function makeRun(overrides: Partial<AutomationActivityRun> = {}): AutomationActivityRun {
   return {
@@ -143,11 +146,15 @@ describe("decideAutomationActivity", () => {
     }
   });
 
-  it("ends the card on every terminal outcome, not only success", () => {
+  it("clears the card on every terminal outcome, not only success", () => {
     for (const state of ["succeeded", "failed", "timed_out", "cancelled", "legacy"] as const) {
-      expect(decideAutomationActivity({ armed: [], runs: [makeRun({ state })], now: NOW })).toEqual(
-        { kind: "end" },
-      );
+      expect(
+        decideAutomationActivity({
+          armed: [],
+          runs: [makeRun({ state, updatedAt: staleOutcome })],
+          now: NOW,
+        }),
+      ).toEqual({ kind: "end" });
     }
   });
 
@@ -169,17 +176,49 @@ describe("decideAutomationActivity", () => {
     expect(
       decideAutomationActivity({
         armed: [{ runId: "run-2", armedAt: NOW - ARMED_RUN_GRACE_MS }],
-        runs: [makeRun({ runId: "run-1", state: "failed" })],
+        runs: [makeRun({ runId: "run-1", state: "failed", updatedAt: staleOutcome })],
         now: NOW,
       }),
     ).toEqual({ kind: "end" });
   });
 
-  it("ends once an armed Run is published as terminal", () => {
+  it("leaves a just-finished Run on the card so its result can be read", () => {
+    // The Gateway ends the card itself, holding the outcome. Clearing it
+    // the moment work stopped would delete the result seconds after it
+    // appeared — which is the whole point of the card.
     expect(
       decideAutomationActivity({
         armed: [{ runId: "run-1", armedAt: NOW - 1_000 }],
-        runs: [makeRun({ runId: "run-1", state: "failed" })],
+        runs: [makeRun({ runId: "run-1", state: "succeeded" })],
+        now: NOW,
+      }),
+    ).toEqual({ kind: "keep" });
+  });
+
+  it("clears a card the Gateway never managed to end, once its result is stale", () => {
+    expect(
+      decideAutomationActivity({
+        armed: [],
+        runs: [makeRun({ runId: "run-1", state: "failed", updatedAt: staleOutcome })],
+        now: NOW,
+      }),
+    ).toEqual({ kind: "end" });
+  });
+
+  it("holds the card through the retention window and clears it after", () => {
+    const justInside = new Date(NOW - TERMINAL_RETENTION_MS + 1_000).toISOString();
+    const justOutside = new Date(NOW - TERMINAL_RETENTION_MS - 1_000).toISOString();
+    expect(
+      decideAutomationActivity({
+        armed: [],
+        runs: [makeRun({ state: "succeeded", updatedAt: justInside })],
+        now: NOW,
+      }),
+    ).toEqual({ kind: "keep" });
+    expect(
+      decideAutomationActivity({
+        armed: [],
+        runs: [makeRun({ state: "succeeded", updatedAt: justOutside })],
         now: NOW,
       }),
     ).toEqual({ kind: "end" });

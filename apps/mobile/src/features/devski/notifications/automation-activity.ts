@@ -38,6 +38,15 @@ export type ArmedAutomationRun = {
 
 export const ARMED_RUN_GRACE_MS = 60_000;
 
+/**
+ * How long a finished Run stays on the card before this device will clear
+ * it. It matches the Gateway's terminal row retention, because the result
+ * is the point: the Gateway ends the card holding the outcome, and a
+ * reconciliation that fired the moment work stopped would wipe the very
+ * thing the card exists to show.
+ */
+export const TERMINAL_RETENTION_MS = 15 * 60 * 1_000;
+
 const MAX_ACTIVITY_ROWS = 5;
 
 type AutomationPhase = Extract<
@@ -128,10 +137,15 @@ export function automationActivityRuns(
 export type AutomationActivityDecision = { readonly kind: "keep" } | { readonly kind: "end" };
 
 /**
- * Whether the Devski Activity still has a Run to follow. It ends only
- * when the server reports every Run finished *and* every Run this device
- * armed it for has actually been seen there, so a reconciliation that
- * overtakes the Gateway can never end a card armed a moment ago.
+ * Whether the Devski Activity still has something to show. This is now a
+ * safety net rather than the way out: the Gateway ends the card itself,
+ * carrying the final state and a dismissal date. This device only clears
+ * a card the Gateway could not end — one whose `end` push had nowhere to
+ * go because no activity token was ever registered.
+ *
+ * It therefore waits out the retention window instead of ending the
+ * moment work stops. Ending on the first terminal state would delete the
+ * result seconds after it appeared.
  */
 export function decideAutomationActivity(input: {
   readonly armed: readonly ArmedAutomationRun[];
@@ -143,5 +157,12 @@ export function decideAutomationActivity(input: {
   const awaited = input.armed.some(
     (run) => !published.has(run.runId) && input.now - run.armedAt < ARMED_RUN_GRACE_MS,
   );
-  return awaited ? { kind: "keep" } : { kind: "end" };
+  if (awaited) return { kind: "keep" };
+  const newestOutcome = input.runs.reduce(
+    (latest, run) => Math.max(latest, Date.parse(run.updatedAt) || 0),
+    0,
+  );
+  // No Runs at all means nothing to read, so there is nothing to protect.
+  if (newestOutcome === 0) return { kind: "end" };
+  return input.now - newestOutcome < TERMINAL_RETENTION_MS ? { kind: "keep" } : { kind: "end" };
 }
