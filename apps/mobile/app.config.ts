@@ -245,6 +245,11 @@ const config: ExpoConfig = {
     // without a team makes expo run:ios re-sign the whole project with a
     // keychain team (PLO-409).
     "./plugins/withIosDevelopmentTeam.cjs",
+    // Also has to run after the extension targets exist, for the same reason:
+    // their creating plugins leave MARKETING_VERSION at Xcode's 1.0 default, and
+    // an extension whose CFBundleShortVersionString disagrees with the app is
+    // rejected by App Store Connect.
+    "./plugins/withIosMarketingVersion.cjs",
     "expo-asset",
     [
       "expo-font",
