@@ -130,15 +130,23 @@ Coolify configuration for the private OpenCode 2 sidecar:
 
 ## Connect T3 to the sidecar
 
-Configure the `opencode2` provider in T3's settings (Settings → Providers →
-OpenCode 2, or the `providers.opencode2` block of the server settings file
-under `/data/t3`):
+The entrypoint seeds the `opencode2` provider on first boot, so no operator
+step is needed. It writes these three values into the `providers.opencode2`
+block of the server settings file under `/data/t3`:
 
-| Setting          | Value                                 |
-| ---------------- | ------------------------------------- |
-| `serverUrl`      | `http://devski-opencode:4096`         |
-| `serverPassword` | the `OPENCODE_SERVER_PASSWORD` secret |
-| `workspaceRoot`  | `/workspaces/code`                    |
+| Setting          | Value                                          |
+| ---------------- | ---------------------------------------------- |
+| `serverUrl`      | `http://devski-opencode:4096`                  |
+| `serverPassword` | the `OPENCODE_SERVER_PASSWORD` environment var |
+| `workspaceRoot`  | `/workspaces/code`                             |
+
+Seeding is one-way: it fills an absent `serverUrl` only, and does nothing when
+`OPENCODE_SERVER_PASSWORD` is not set. An owner who edits the block on the
+volume keeps that edit across restarts and redeployments.
+
+This has to happen in the entrypoint because there is nowhere else to enter it.
+The deployed image serves no web UI, so Settings → Providers is unreachable,
+and the mobile app has no settings surface for a provider.
 
 The provider then serves live model/agent inventory from the pinned server,
 and Code threads run against it. Sessions whose directory resolves outside
