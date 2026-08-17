@@ -94,9 +94,13 @@ RUN pnpm install --frozen-lockfile --filter t3...
 # container that mounts only /workspaces/code, so a worktree below T3 home is
 # invisible to it and `startSession` rejects the thread for resolving outside
 # the root. Both containers see this path identically.
+# T3CODE_ENVIRONMENT_LABEL is the name clients show for this environment. A
+# container has no friendly host name, so without it the label falls back to
+# the container ID and the app displays something like `9ccba90992fe`.
 ENV TZ=Europe/Amsterdam \
     NODE_ENV=production \
     T3CODE_HOME=/data/t3 \
+    T3CODE_ENVIRONMENT_LABEL=Devski \
     T3CODE_WORKTREES_DIR=/workspaces/code/.worktrees \
     CLAUDE_CONFIG_DIR=/data/claude \
     DEVSKI_CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION} \
@@ -121,6 +125,13 @@ EXPOSE 3773
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:3773/.well-known/t3/environment').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+
+# The entrypoint seeds deployment-owned defaults that T3 itself cannot know —
+# currently the Code Workspace Root new projects belong in — and then runs the
+# command below. It never overwrites a value the owner has set.
+COPY infra/devski-code/entrypoint.sh /usr/local/bin/devski-code-entrypoint.sh
+RUN chmod +x /usr/local/bin/devski-code-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/devski-code-entrypoint.sh"]
 
 # `serve` runs headless and prints one-shot pairing details to the log on
 # first boot. Mint later pairing credentials with the auth control plane —
