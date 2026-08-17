@@ -137,6 +137,82 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }),
   );
 
+  const noFlags = {
+    mode: Option.none(),
+    port: Option.none(),
+    host: Option.none(),
+    baseDir: Option.none(),
+    cwd: Option.none(),
+    devUrl: Option.none(),
+    noBrowser: Option.none(),
+    bootstrapFd: Option.none(),
+    autoBootstrapProjectFromCwd: Option.none(),
+    logWebSocketEvents: Option.none(),
+    tailscaleServeEnabled: Option.none(),
+    tailscaleServePort: Option.none(),
+  } as const;
+
+  const resolveWithEnv = (env: Record<string, string>) =>
+    resolveServerConfig(noFlags, Option.none()).pipe(
+      Effect.provide(
+        Layer.mergeAll(ConfigProvider.layer(ConfigProvider.fromEnv({ env })), NetService.layer),
+      ),
+    );
+
+  it.effect("defaults the worktrees directory below the base directory", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-worktrees-default");
+      const resolved = yield* resolveWithEnv({ T3CODE_HOME: baseDir });
+
+      assert.equal(resolved.worktreesDir, join(baseDir, "worktrees"));
+    }),
+  );
+
+  it.effect("puts worktrees where T3CODE_WORKTREES_DIR points", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-worktrees-override");
+      const worktreesDir = join(NodeOS.tmpdir(), "t3-cli-config-shared-root", ".worktrees");
+      const resolved = yield* resolveWithEnv({
+        T3CODE_HOME: baseDir,
+        T3CODE_WORKTREES_DIR: worktreesDir,
+      });
+
+      assert.equal(resolved.worktreesDir, worktreesDir);
+      // The override must not disturb the rest of the T3 home layout.
+      assert.equal(resolved.stateDir, join(baseDir, "userdata"));
+    }),
+  );
+
+  it.effect("expands a leading ~ in T3CODE_WORKTREES_DIR", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-worktrees-home");
+      const resolved = yield* resolveWithEnv({
+        T3CODE_HOME: baseDir,
+        T3CODE_WORKTREES_DIR: "~/code/.worktrees",
+      });
+
+      // A spawned process gets no shell expansion, so an unexpanded `~` would
+      // be treated as a relative directory named `~`.
+      assert.equal(resolved.worktreesDir, join(NodeOS.homedir(), "code", ".worktrees"));
+    }),
+  );
+
+  it.effect("ignores a blank T3CODE_WORKTREES_DIR", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-worktrees-blank");
+      const resolved = yield* resolveWithEnv({
+        T3CODE_HOME: baseDir,
+        T3CODE_WORKTREES_DIR: "   ",
+      });
+
+      assert.equal(resolved.worktreesDir, join(baseDir, "worktrees"));
+    }),
+  );
+
   it.effect("uses CLI flags when provided", () =>
     Effect.gen(function* () {
       const { join } = yield* Path.Path;

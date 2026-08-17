@@ -89,9 +89,15 @@ RUN pnpm install --frozen-lockfile --filter t3...
 # IS_SANDBOX: the container is the sandbox boundary; without it Claude Code
 # refuses bypassPermissions ("Full" access mode) for the root user and every
 # Full-mode turn fails at turn/setPermissionMode.
+# T3CODE_WORKTREES_DIR moves worktrees off the T3-only /data/t3 volume and into
+# the Code Workspace Root. The interactive OpenCode 2 sidecar is a separate
+# container that mounts only /workspaces/code, so a worktree below T3 home is
+# invisible to it and `startSession` rejects the thread for resolving outside
+# the root. Both containers see this path identically.
 ENV TZ=Europe/Amsterdam \
     NODE_ENV=production \
     T3CODE_HOME=/data/t3 \
+    T3CODE_WORKTREES_DIR=/workspaces/code/.worktrees \
     CLAUDE_CONFIG_DIR=/data/claude \
     DEVSKI_CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION} \
     DISABLE_AUTOUPDATER=1 \

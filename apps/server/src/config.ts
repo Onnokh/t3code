@@ -47,6 +47,13 @@ export interface ServerDerivedPaths {
 
 export interface DeriveServerPathsOptions {
   readonly baseDirIsExplicit?: boolean;
+  /**
+   * Absolute worktrees directory, already home-expanded by the caller.
+   * Overrides the default below the base directory, so a deployment whose
+   * agent runtime lives in another container can put worktrees on a volume
+   * both sides mount at the same absolute path.
+   */
+  readonly worktreesDir?: string | undefined;
 }
 
 /**
@@ -117,7 +124,7 @@ export const deriveServerPaths = Effect.fn(function* (
     keybindingsConfigPath: join(stateDir, "keybindings.json"),
     settingsPath: join(stateDir, "settings.json"),
     providerStatusCacheDir,
-    worktreesDir: join(baseDir, "worktrees"),
+    worktreesDir: options.worktreesDir ?? join(baseDir, "worktrees"),
     attachmentsDir,
     logsDir,
     serverLogPath: join(logsDir, "server.log"),

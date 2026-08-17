@@ -21,6 +21,11 @@ in `Onnokh/digital-home`).
 - Both containers mount the Code Workspace Root at exactly `/workspaces/code`;
   T3 and OpenCode must observe the same file identity and repository state at
   the same absolute path.
+- Worktrees live in that root too, at `/workspaces/code/.worktrees`, through
+  `T3CODE_WORKTREES_DIR`. T3 otherwise keeps them below its home
+  (`/data/t3/worktrees`), a volume only the T3 container mounts — the sidecar
+  cannot see a worktree there, and `startSession` rejects the thread for
+  resolving outside the Code Workspace Root.
 
 ## Claude runtime and the one-time Max login
 
@@ -99,7 +104,8 @@ Coolify configuration for the private T3 application:
 - Dockerfile location `infra/devski-code/Dockerfile`, context `/`;
 - no public domain, no published ports; internal network alias `devski-t3`;
 - persistent volumes: `/data/t3` (T3 state), `/data/claude` (Claude runtime
-  state), `/workspaces/code` (Code Workspace Root);
+  state), `/workspaces/code` (Code Workspace Root, and the worktrees below
+  `.worktrees` that the sidecar must also see);
 - health check: `GET /.well-known/t3/environment` on port `3773`.
 
 T3 also serves `GET /healthz/agent-runtimes` on the private port: a
