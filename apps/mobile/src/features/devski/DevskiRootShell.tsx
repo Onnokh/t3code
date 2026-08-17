@@ -16,6 +16,7 @@ import { useEnvironments } from "../../state/environments";
 import { ConnectionsNewRouteScreen } from "../connection/ConnectionsNewRouteScreen";
 import { useConnectionController } from "../connection/useConnectionController";
 import { codeTabBarDisplay } from "./devski-shell-chrome";
+import { useDevskiActivityReconciliation } from "./notifications/automationNotifications";
 import { AutomationJobDetailScreen } from "./automations/AutomationJobDetailScreen";
 import { AutomationJobEditorScreen } from "./automations/AutomationJobEditorScreen";
 import { AutomationRunDetailScreen } from "./automations/AutomationRunDetailScreen";
@@ -140,6 +141,11 @@ const PairingNavigation = createStaticNavigation(PairingStack);
 export function DevskiRootShell(props: Pick<NavigationProps, "linking" | "theme">) {
   const { environments, isReady } = useEnvironments();
   const { removeEnvironment } = useConnectionController();
+  // A Run finishes whether or not Automations is on screen, so the shell
+  // owns ending the Devski Activity: at launch it clears a card that
+  // outlived the process that armed it, and on foreground one whose Run
+  // ended while Devski was closed.
+  useDevskiActivityReconciliation();
   const authorizedEnvironments = environments.filter(
     (environment) => environment.connection.failureReason !== "authentication",
   );

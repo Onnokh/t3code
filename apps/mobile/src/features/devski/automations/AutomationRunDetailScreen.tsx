@@ -5,7 +5,10 @@ import { useFocusEffect, type StaticScreenProps } from "@react-navigation/native
 import { AppText as Text } from "../../../components/AppText";
 import { ErrorBanner } from "../../../components/ErrorBanner";
 import { uuidv4 } from "../../../lib/uuid";
-import { useAutomationNotificationOffer } from "../notifications/automationNotifications";
+import {
+  reconcileDevskiActivity,
+  useAutomationNotificationOffer,
+} from "../notifications/automationNotifications";
 import { automationsCacheKeys, useAutomationsClient } from "./automations-api";
 import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
@@ -141,6 +144,14 @@ export function AutomationRunDetailScreen({ route }: StaticScreenProps<Params>) 
       if (result.kind === "ok") setArtifacts(result.value);
     });
   }, [terminal, client, runId, followLog]);
+
+  // A Run that ends has to take the Devski Activity with it. The Gateway
+  // only ever pushes Live Activity updates, so this screen — where the
+  // user watches a Run finish — is the earliest place the card can go.
+  useEffect(() => {
+    if (!terminal || !client) return;
+    void reconcileDevskiActivity(client);
+  }, [terminal, client]);
 
   // Contextual notification onboarding (PLO-420): the first observed
   // successful Run is the moment Automation Notifications become worth
