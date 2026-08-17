@@ -5,6 +5,8 @@ import { useFocusEffect, useNavigation, type NavigationProp } from "@react-navig
 import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
 import { ErrorBanner } from "../../../components/ErrorBanner";
+import { automationActivityRuns } from "../notifications/automation-activity";
+import { settleDevskiActivityForAutomationRuns } from "../notifications/automationNotifications";
 import { automationsCacheKeys, useAutomationsClient } from "./automations-api";
 import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
@@ -50,6 +52,10 @@ export function AutomationsJobsScreen() {
     if (result.kind === "ok") {
       writeDevskiCacheEntry(automationsCacheKeys.jobs, result.value);
       setState({ kind: "ready", jobs: result.value });
+      // This list is exactly what tells the Devski Activity whether any
+      // Run is still going, so settle the card from the read that just
+      // landed rather than asking the Gateway a second time.
+      void settleDevskiActivityForAutomationRuns(automationActivityRuns(result.value));
     } else if (result.kind === "pairing-required") {
       setState({
         kind: "error",

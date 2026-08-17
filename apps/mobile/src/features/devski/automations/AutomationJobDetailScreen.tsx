@@ -145,8 +145,14 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
       if (result.kind === "ok") {
         runNowKey.current = null;
         // Show this Run on the unified Devski Activity (best-effort;
-        // ActivityKit being unavailable never affects the Run).
-        armDevskiActivity({ jobName: job.name, runId: result.value.run.id });
+        // ActivityKit being unavailable never affects the Run). The
+        // accepted state comes along because a Run can already be
+        // terminal here — the Harness fails one in milliseconds.
+        armDevskiActivity({
+          jobName: job.name,
+          runId: result.value.run.id,
+          runState: result.value.run.state,
+        });
         void load();
         openRun(result.value.run.id);
         return;
