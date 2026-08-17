@@ -60,7 +60,11 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # The suite needs a little over ten minutes on this runner, so it was being
+    # killed at the wall after every test file had already passed — reported as
+    # `cancelled`, which reads like somebody stopped the run rather than a job
+    # that ran out of time. Raised for headroom, not because the suite grew.
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v6
