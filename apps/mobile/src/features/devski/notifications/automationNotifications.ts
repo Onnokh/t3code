@@ -219,77 +219,61 @@ export async function registerLiveActivityTokenWithGateway(input: {
 const armedAutomationRuns = new Map<string, number>();
 
 /**
- * Arms the unified Devski Activity for a foreground-triggered Automation
- * Run and hands its push token to the Gateway. If Code work already armed
- * the activity, its token is reused instead of starting a second card —
- * one aggregate presents both sources. Best-effort: Live Activities being
- * disabled, unsupported, or at the system limit never affects the Run.
+ * Hands the Gateway the push token of every Live Activity on this device,
+ * including one the Gateway started itself while Devski was closed.
+ *
+ * A remotely started card gets a *new* activity push token, issued to the
+ * app rather than to the server, and updates and `end` can only be
+ * delivered to it. So a card the server created is frozen until the app
+ * next runs and registers it. This is the closing of that loop, and it is
+ * why a Run that starts while Devski is closed shows its opening state
+ * promptly but catches up on the rest when the app is next opened.
  */
-async function armDevskiActivityForAutomationRun(input: {
-  readonly jobName: string;
-  readonly runId: string;
-  readonly runState: RunState;
+async function registerLiveActivityTokens(input: {
   readonly httpBaseUrl: string;
   readonly bearerToken: string;
 }): Promise<void> {
   if (Platform.OS !== "ios" || !supportsAgentAwarenessPush()) return;
-  // The Harness can fail a Run in milliseconds, so a Trigger can come back
-  // already terminal. That Run has nothing left to follow, and arming for
-  // it would only put a card on the Lock Screen that is stale on arrival.
-  if (!isRunActive(input.runState)) return;
   const preferences = await loadPreferences().catch(() => null);
   if (preferences?.liveActivitiesEnabled === false) return;
 
-  const registerToken = async (activityPushToken: string) => {
+  const deviceId = await loadOrCreateAgentAwarenessDeviceId();
+  const register = async (activityPushToken: string) => {
     await registerLiveActivityTokenWithGateway({
       httpBaseUrl: input.httpBaseUrl,
       bearerToken: input.bearerToken,
-      deviceId: await loadOrCreateAgentAwarenessDeviceId(),
+      deviceId,
       activityPushToken,
     });
   };
 
-  try {
-    const nowIso = new Date().toISOString();
-    armedAutomationRuns.set(input.runId, Date.now());
-    const activity =
-      AgentActivity.getInstances()[0] ??
-      AgentActivity.start(
-        buildAutomationActivityProps({
-          runs: [
-            {
-              runId: input.runId,
-              jobName: input.jobName,
-              state: input.runState,
-              updatedAt: nowIso,
-            },
-          ],
-          now: nowIso,
-        }),
-      );
-    const token = await activity.getPushToken();
-    if (token) {
-      await registerToken(token);
-      return;
+  for (const activity of AgentActivity.getInstances()) {
+    try {
+      const token = await activity.getPushToken();
+      if (token) {
+        await register(token);
+        continue;
+      }
+      // Not issued yet: iOS delivers it shortly after the card appears.
+      activity.addPushTokenListener((event) => {
+        if (event.pushToken) void register(event.pushToken).catch(() => {});
+      });
+    } catch {
+      // A card that vanished between listing and reading is not an error.
     }
-    activity.addPushTokenListener((event) => {
-      if (event.pushToken) void registerToken(event.pushToken);
-    });
-  } catch {
-    // ActivityKit refused (disabled, unsupported, or at the system
-    // limit). The Gateway's alert fallback still covers failures.
   }
 }
 
 /**
- * Returns the best-effort Devski Activity arming callback for a Run that
- * was just accepted from the foreground.
+ * Keeps the Gateway able to reach whatever card is on this device, at
+ * launch and on every foreground.
+ *
+ * Devski deliberately no longer starts a card when a Run is triggered from
+ * the foreground. The Gateway starts it, for every Run and not only the
+ * ones triggered while the app happened to be open — and two starters
+ * would mean two cards for the same work.
  */
-export function useArmDevskiActivityForAutomationRun(): (input: {
-  readonly jobName: string;
-  readonly runId: string;
-  readonly runState: RunState;
-}) => void {
+export function useDevskiActivityTokenRegistration(): void {
   const workspace = useWorkspaceState();
   const environment =
     workspace.environments.find((candidate) => candidate.connectionState === "connected") ??
@@ -299,15 +283,17 @@ export function useArmDevskiActivityForAutomationRun(): (input: {
   const bearerToken = connection?.bearerToken ?? null;
   const httpBaseUrl = connection?.httpBaseUrl ?? null;
 
-  return useCallback(
-    (input: { readonly jobName: string; readonly runId: string; readonly runState: RunState }) => {
-      if (!bearerToken || !httpBaseUrl) return;
-      void armDevskiActivityForAutomationRun({ ...input, httpBaseUrl, bearerToken }).catch(
-        () => {},
-      );
-    },
-    [bearerToken, httpBaseUrl],
-  );
+  useEffect(() => {
+    if (!bearerToken || !httpBaseUrl) return;
+    const run = () => {
+      void registerLiveActivityTokens({ httpBaseUrl, bearerToken }).catch(() => {});
+    };
+    run();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") run();
+    });
+    return () => subscription.remove();
+  }, [bearerToken, httpBaseUrl]);
 }
 
 /**

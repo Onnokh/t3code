@@ -18,6 +18,7 @@ import { useConnectionController } from "../connection/useConnectionController";
 import { codeTabBarDisplay } from "./devski-shell-chrome";
 import {
   useDevskiActivityReconciliation,
+  useDevskiActivityTokenRegistration,
   useDevskiPushToStartRegistration,
 } from "./notifications/automationNotifications";
 import { AutomationJobDetailScreen } from "./automations/AutomationJobDetailScreen";
@@ -153,6 +154,9 @@ export function DevskiRootShell(props: Pick<NavigationProps, "linking" | "theme"
   // push-to-start token, and that is the whole point: a scheduled Run
   // fires while Devski is closed.
   useDevskiPushToStartRegistration();
+  // A card the Gateway started gets its activity token issued to the app,
+  // so the Gateway cannot update or end it until this hands it over.
+  useDevskiActivityTokenRegistration();
   const authorizedEnvironments = environments.filter(
     (environment) => environment.connection.failureReason !== "authentication",
   );
