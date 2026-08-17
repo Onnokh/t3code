@@ -16,7 +16,10 @@ import { useEnvironments } from "../../state/environments";
 import { ConnectionsNewRouteScreen } from "../connection/ConnectionsNewRouteScreen";
 import { useConnectionController } from "../connection/useConnectionController";
 import { codeTabBarDisplay } from "./devski-shell-chrome";
-import { useDevskiActivityReconciliation } from "./notifications/automationNotifications";
+import {
+  useDevskiActivityReconciliation,
+  useDevskiPushToStartRegistration,
+} from "./notifications/automationNotifications";
 import { AutomationJobDetailScreen } from "./automations/AutomationJobDetailScreen";
 import { AutomationJobEditorScreen } from "./automations/AutomationJobEditorScreen";
 import { AutomationRunDetailScreen } from "./automations/AutomationRunDetailScreen";
@@ -146,6 +149,10 @@ export function DevskiRootShell(props: Pick<NavigationProps, "linking" | "theme"
   // outlived the process that armed it, and on foreground one whose Run
   // ended while Devski was closed.
   useDevskiActivityReconciliation();
+  // The Gateway can only create a card if it holds this device's
+  // push-to-start token, and that is the whole point: a scheduled Run
+  // fires while Devski is closed.
+  useDevskiPushToStartRegistration();
   const authorizedEnvironments = environments.filter(
     (environment) => environment.connection.failureReason !== "authentication",
   );
