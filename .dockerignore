@@ -1,0 +1,72 @@
+# Build context for infra/devski-code/Dockerfile and Dockerfile.opencode.
+#
+# Without this file the context is the whole working tree — 7.8 GB, of which
+# 6.8 GB is node_modules. A fresh CI clone never carries those, so the problem
+# is invisible in Coolify and fatal on a developer machine.
+#
+# The two images copy only: the root manifests, patches/, scripts/, packages/,
+# apps/server/, and infra/devski-code/. Everything below is either rebuilt
+# inside the image or belongs to an app this service does not run.
+
+# Dependencies are installed in the image by `pnpm install --frozen-lockfile`.
+**/node_modules
+
+# Git history is not image content; the image is built from a checkout.
+.git
+.gitignore
+
+# Reference-only nested checkouts (alchemy-effect, effect-smol, ...).
+.repos
+
+# Apps this service does not run. Only apps/server is copied.
+apps/mobile
+apps/web
+apps/desktop
+apps/marketing
+
+# Native toolchain output and platform bundles.
+native/**/target
+packaging
+squashfs-root
+dist-electron
+.electron-runtime
+
+# Build and test output, regenerated in the image when it is needed at all.
+**/dist
+**/build
+**/.turbo
+**/*.tsbuildinfo
+**/.vite-hooks
+**/.vitest-*
+**/__screenshots__
+**/.showcase
+.astro
+.tanstack
+.alchemy
+.vercel
+
+# Local developer state and secrets.
+.env
+.env.*
+!.env.example
+.t3
+.bun
+.logs
+**/*.log
+
+# Editor, agent, and planning directories.
+.vscode
+.idea
+.cursor
+.claude
+.codex
+.agents
+.devcontainer
+.macroscope
+.plans
+
+# Documentation and experiments.
+docs
+experiments
+assets
+**/.DS_Store
