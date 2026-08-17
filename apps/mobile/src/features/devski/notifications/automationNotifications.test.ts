@@ -24,6 +24,7 @@ vi.mock("expo-widgets", () => ({
     getInstances: vi.fn(() => []),
     start: vi.fn(),
   })),
+  addPushToStartTokenListener: vi.fn(() => ({ remove: vi.fn() })),
 }));
 vi.mock("expo-constants", () => ({ default: { expoConfig: { extra: {} } } }));
 vi.mock("expo-notifications", () => ({
@@ -45,6 +46,7 @@ vi.mock("../../../state/workspace", () => ({ useWorkspaceState: vi.fn() }));
 import {
   offerAutomationNotifications,
   registerAutomationNotificationsWithGateway,
+  registerPushToStartTokenWithGateway,
   type AutomationNotificationDeps,
 } from "./automationNotifications";
 
@@ -167,5 +169,52 @@ describe("registerAutomationNotificationsWithGateway", () => {
       fetchImpl,
     });
     expect(ok).toBe(false);
+  });
+});
+
+describe("registerPushToStartTokenWithGateway", () => {
+  it("PUTs only the push-to-start token, leaving the device token untouched", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fetchImpl = (async (url: unknown, init?: RequestInit) => {
+      calls.push({ url: String(url), init: init ?? {} });
+      return new Response(JSON.stringify({ registration: { deviceId: "device-1" } }), {
+        status: 200,
+      });
+    }) as typeof fetch;
+
+    const ok = await registerPushToStartTokenWithGateway({
+      httpBaseUrl: "https://devski.onkie.dev/",
+      bearerToken: "device-session-bearer",
+      deviceId: "device-1",
+      pushToStartToken: "push-to-start-1",
+      apsEnvironment: "sandbox",
+      fetchImpl,
+    });
+
+    expect(ok).toBe(true);
+    expect(calls[0]?.url).toBe("https://devski.onkie.dev/api/devski/v1/notifications/registration");
+    // No pushToken key at all: the Gateway COALESCEs an absent token, so
+    // sending null here would silently drop failure alerts for this device.
+    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({
+      deviceId: "device-1",
+      pushToStartToken: "push-to-start-1",
+      apsEnvironment: "sandbox",
+    });
+  });
+
+  it("reports an unreachable Gateway as a soft failure", async () => {
+    const fetchImpl = (async () => {
+      throw new Error("offline");
+    }) as typeof fetch;
+    expect(
+      await registerPushToStartTokenWithGateway({
+        httpBaseUrl: "https://devski.onkie.dev",
+        bearerToken: "bearer",
+        deviceId: "device-1",
+        pushToStartToken: "push-to-start-1",
+        apsEnvironment: "production",
+        fetchImpl,
+      }),
+    ).toBe(false);
   });
 });

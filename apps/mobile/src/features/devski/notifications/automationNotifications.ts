@@ -11,6 +11,8 @@ import {
 } from "../../../persistence/imperative";
 import { useSavedRemoteConnection } from "../../../state/use-remote-environment-registry";
 import { useWorkspaceState } from "../../../state/workspace";
+import { addPushToStartTokenListener } from "expo-widgets";
+
 import AgentActivity from "../../../widgets/AgentActivity";
 import { supportsAgentAwarenessPush } from "../../agent-awareness/capabilities";
 import { requestAgentNotificationPermission } from "../../agent-awareness/notificationPermissions";
@@ -117,6 +119,50 @@ export async function registerAutomationNotificationsWithGateway(input: {
         body: JSON.stringify({
           deviceId: input.deviceId,
           pushToken: input.pushToken,
+          apsEnvironment: input.apsEnvironment,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Registers this device's push-to-start token with the Gateway, which is
+ * what lets a Run create the Devski Activity while Devski is closed. It is
+ * the only token that exists before a card does; the activity token below
+ * belongs to a card that is already live, and APNs silently ignores a
+ * start sent to it.
+ *
+ * The token is issued by iOS per install and rotates on its own schedule,
+ * so this is called whenever ActivityKit hands one over rather than at a
+ * particular moment in the UI.
+ */
+export async function registerPushToStartTokenWithGateway(input: {
+  readonly httpBaseUrl: string;
+  readonly bearerToken: string;
+  readonly deviceId: string;
+  readonly pushToStartToken: string;
+  readonly apsEnvironment: "sandbox" | "production";
+  readonly fetchImpl?: typeof fetch;
+}): Promise<boolean> {
+  const origin = input.httpBaseUrl.replace(/\/$/, "");
+  try {
+    const response = await (input.fetchImpl ?? fetch)(
+      `${origin}/api/devski/v1/notifications/registration`,
+      {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${input.bearerToken}`,
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          deviceId: input.deviceId,
+          pushToStartToken: input.pushToStartToken,
           apsEnvironment: input.apsEnvironment,
         }),
         signal: AbortSignal.timeout(15_000),
@@ -320,6 +366,54 @@ export function useDevskiActivityReconciliation(): void {
     });
     return () => subscription.remove();
   }, [client]);
+}
+
+/**
+ * Hands this device's push-to-start token to the Gateway, and every
+ * rotation of it after that. Without this the Gateway can update a card
+ * the app already created but can never create one itself, so a Run
+ * triggered from the Harness while Devski is closed stays invisible.
+ *
+ * iOS emits the token when ActivityKit is ready rather than on request,
+ * which is why this listens for the life of the shell instead of asking
+ * once at a convenient moment.
+ */
+export function useDevskiPushToStartRegistration(): void {
+  const workspace = useWorkspaceState();
+  const environment =
+    workspace.environments.find((candidate) => candidate.connectionState === "connected") ??
+    workspace.environments[0] ??
+    null;
+  const connection = useSavedRemoteConnection(environment?.environmentId ?? null);
+  const bearerToken = connection?.bearerToken ?? null;
+  const httpBaseUrl = connection?.httpBaseUrl ?? null;
+
+  useEffect(() => {
+    if (Platform.OS !== "ios" || !supportsAgentAwarenessPush()) return;
+    if (!bearerToken || !httpBaseUrl) return;
+
+    let cancelled = false;
+    const register = async (pushToStartToken: string) => {
+      if (cancelled || pushToStartToken.trim().length === 0) return;
+      const preferences = await loadPreferences().catch(() => null);
+      if (preferences?.liveActivitiesEnabled === false) return;
+      await registerPushToStartTokenWithGateway({
+        httpBaseUrl,
+        bearerToken,
+        deviceId: await loadOrCreateAgentAwarenessDeviceId(),
+        pushToStartToken,
+        apsEnvironment: resolveApsEnvironment(Constants.expoConfig?.extra?.appVariant),
+      });
+    };
+
+    const subscription = addPushToStartTokenListener((event) => {
+      void register(event.activityPushToStartToken).catch(() => {});
+    });
+    return () => {
+      cancelled = true;
+      subscription.remove();
+    };
+  }, [bearerToken, httpBaseUrl]);
 }
 
 async function readNativePushToken(): Promise<string | null> {
