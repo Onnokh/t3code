@@ -12,6 +12,7 @@ import {
   readSites,
   readSyncRequested,
   type SeoEnvelope,
+  type SeoFreshness,
   type SeoHistoryData,
   type SeoLogData,
   type SeoOpportunitiesData,
@@ -216,12 +217,27 @@ export function useSeoRead<T>(
  * thing, and a refused one leaves the live read on screen untouched, so a
  * sentence about it would explain a screen that is already correct.
  *
- * What the gesture does show for itself is `syncedAt` — when this Site's
- * Search Console data last arrived. It comes from the `status` read because
- * that is the only read the Gateway populates it on, which makes it a second
- * request per screen. That is the deliberate cost: the alternative is a synced
- * time on the home screen alone, and a refresh happens on all seven.
+ * Nor does the gesture wait for the sync to land. Ranksta answers 202 and
+ * fetches behind it, so re-reading until something moves is a loop with no
+ * exit condition this device can see, and a previous draft that polled for one
+ * spent four round-trips proving it.
+ *
+ * What the gesture does show for itself is the whole `status` freshness: the
+ * date the data reaches and, once the Gateway sends it, when Ranksta last asked
+ * Google. Both live on the `status` read alone, which makes it a second request
+ * per screen. That is the deliberate cost: the alternative is a data date on the
+ * home screen alone, and a refresh happens on all seven.
  */
+/**
+ * How long after asking for a sync to look once more for the check instant.
+ *
+ * Long enough for Ranksta to finish a run that fetches a few days, short enough
+ * that the line settles while the owner is still looking at the screen. A single
+ * delay rather than a poll: if the sync takes longer than this, the next pull
+ * shows it, which is a better failure than four speculative round-trips.
+ */
+const CHECK_SETTLE_MS = 4_000;
+
 export function useSeoRefresh(
   client: SeoClient | null,
   site: string | null,
@@ -229,14 +245,14 @@ export function useSeoRefresh(
 ): {
   readonly refreshing: boolean;
   readonly refresh: () => void;
-  readonly syncedAt: string | null;
+  readonly freshness: SeoFreshness | null;
 } {
   const statusFetcher = useMemo(
     () => (client && site ? () => client.status(site) : null),
     [client, site],
   );
-  // The same hook and key discipline every screen's own read uses, so the
-  // synced time is drawn from this device at launch, replaced by the read that
+  // The same hook and key discipline every screen's own read uses, so the data
+  // date is drawn from this device at launch, replaced by the read that
   // follows it, retained when a read fails, and never shown for another Site.
   const status = useSeoRead(site ? `status:${site}` : null, statusFetcher);
   const [refreshing, setRefreshing] = useState(false);
@@ -254,27 +270,44 @@ export function useSeoRefresh(
 
   const refresh = useCallback(() => {
     const ticket = ++generation.current;
+    const mine = () => generation.current === ticket;
     setRefreshing(true);
-    // The synced time is read alongside the screen's data rather than after
-    // it, so the one visible outcome of the gesture lands with everything else.
-    void Promise.all([readRef.current(), status.reload()])
-      .catch(() => undefined)
-      .finally(() => {
-        if (generation.current === ticket) setRefreshing(false);
-      });
-    if (!client || site === null) return;
+
     // Deliberately unawaited and unreported: the sync is a request about the
     // future, and the client answers rather than rejects, so this catch only
     // guards the refresh against a defect breaking the read.
-    void client.sync(site).catch(() => undefined);
+    if (client && site !== null) void client.sync(site).catch(() => undefined);
+
+    // The status read runs alongside the screen's data rather than after it, so
+    // the data date lands with everything else the gesture shows.
+    void Promise.all([readRef.current(), status.reload()])
+      .catch(() => undefined)
+      .finally(() => {
+        if (!mine()) return;
+        setRefreshing(false);
+
+        // Ranksta answers the sync with `202` and asks Google behind it, so the
+        // read above necessarily saw the *previous* check. Without this, the
+        // first pull after a real sync reports the check before it and only the
+        // next pull tells the truth.
+        //
+        // One re-read, not a loop, and only for the check: `checkedAt` is stamped
+        // when the run completes, which is seconds away. The data date is not
+        // chased, because it moves only when Google actually had new days —
+        // waiting on that would wait out a six-hour reconciliation floor and
+        // always give up.
+        setTimeout(() => {
+          if (mine()) void status.reload().catch(() => undefined);
+        }, CHECK_SETTLE_MS);
+      });
   }, [client, site, status.reload]);
 
   return {
     refreshing,
     refresh,
     // Whatever the status read can show, what it retained through a failure
-    // included: the last synced time this device knows of is still a fact
-    // about the data, where a null would claim nothing ever synced.
-    syncedAt: displayableEnvelope(status.read)?.freshness.syncedAt ?? null,
+    // included: the last data date this device knows of is still a fact about
+    // the data, where a null would claim there has never been any.
+    freshness: displayableEnvelope(status.read)?.freshness ?? null,
   };
 }

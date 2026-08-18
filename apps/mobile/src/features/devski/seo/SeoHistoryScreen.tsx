@@ -6,7 +6,7 @@ import { EmptyState } from "../../../components/EmptyState";
 import { FieldRow, SectionTitle } from "../automations/AutomationsUi";
 import { useSeoClient, useSeoRead, useSeoRefresh } from "./seo-api";
 import { displayableEnvelope, formatCount, formatCtr, formatPosition } from "./seo-state";
-import { SeoFreshnessBanner, SeoSyncedTime } from "./SeoUi";
+import { SeoDataDate, SeoFreshnessBanner } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 const HISTORY_DAYS = 56;
@@ -53,7 +53,7 @@ export function SeoHistoryScreen() {
         <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
       }
     >
-      <SeoSyncedTime syncedAt={refresh.syncedAt} />
+      <SeoDataDate freshness={refresh.freshness} />
       <SeoFreshnessBanner read={read} />
       {envelope ? (
         <>
