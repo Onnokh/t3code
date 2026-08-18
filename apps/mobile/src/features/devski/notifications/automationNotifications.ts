@@ -11,7 +11,7 @@ import {
 } from "../../../persistence/imperative";
 import { useSavedRemoteConnection } from "../../../state/use-remote-environment-registry";
 import { useWorkspaceState } from "../../../state/workspace";
-import { addPushToStartTokenListener } from "expo-widgets";
+import { addActivityTokenListener, addPushToStartTokenListener } from "expo-widgets";
 
 import AgentActivity from "../../../widgets/AgentActivity";
 import { supportsAgentAwarenessPush } from "../../agent-awareness/capabilities";
@@ -264,14 +264,40 @@ async function registerLiveActivityTokens(input: {
   }
 }
 
+/** Reports one card-scoped token, wherever it came from. */
+async function registerActivityPushToken(input: {
+  readonly httpBaseUrl: string;
+  readonly bearerToken: string;
+  readonly activityPushToken: string;
+}): Promise<void> {
+  if (Platform.OS !== "ios" || !supportsAgentAwarenessPush()) return;
+  const preferences = await loadPreferences().catch(() => null);
+  if (preferences?.liveActivitiesEnabled === false) return;
+  const deviceId = await loadOrCreateAgentAwarenessDeviceId();
+  await registerLiveActivityTokenWithGateway({
+    httpBaseUrl: input.httpBaseUrl,
+    bearerToken: input.bearerToken,
+    deviceId,
+    activityPushToken: input.activityPushToken,
+  });
+}
+
 /**
- * Keeps the Gateway able to reach whatever card is on this device, at
- * launch and on every foreground.
+ * Keeps the Gateway able to reach whatever card is on this device.
  *
  * Devski deliberately no longer starts a card when a Run is triggered from
  * the foreground. The Gateway starts it, for every Run and not only the
  * ones triggered while the app happened to be open — and two starters
  * would mean two cards for the same work.
+ *
+ * Scanning at launch and on foreground is not enough on its own. A card
+ * the Gateway starts while the app is away gets a fresh, card-scoped token
+ * from iOS, and only this device can report it. Without it the Gateway
+ * keeps addressing the previous card: APNs answers 200, iOS discards the
+ * push because that activity is gone, and the new card sits on its opening
+ * state until someone opens the app. So the listener runs continuously and
+ * the foreground scan stays as a catch-up for whatever it missed while the
+ * process was not running.
  */
 export function useDevskiActivityTokenRegistration(): void {
   const workspace = useWorkspaceState();
@@ -292,7 +318,20 @@ export function useDevskiActivityTokenRegistration(): void {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") run();
     });
-    return () => subscription.remove();
+    // Fires for every activity on the device, including one the system
+    // started from a push while this process was not running.
+    const tokens = addActivityTokenListener((event) => {
+      if (!event.pushToken) return;
+      void registerActivityPushToken({
+        httpBaseUrl,
+        bearerToken,
+        activityPushToken: event.pushToken,
+      }).catch(() => {});
+    });
+    return () => {
+      subscription.remove();
+      tokens.remove();
+    };
   }, [bearerToken, httpBaseUrl]);
 }
 
