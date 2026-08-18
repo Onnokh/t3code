@@ -75,7 +75,7 @@ RUN bun install -g --trust @opencode-ai/cli@0.0.0-next-17199
 # default branch at build time and .agents/.skill-lock.json records what landed.
 ARG SKILLS_CLI_VERSION=1.5.22
 RUN HOME=/opt/agent-skills bunx --bun skills@${SKILLS_CLI_VERSION} \
-      add Onnokh/skills --agent opencode --skill '*' --copy --global --yes \
+      add Onnokh/skills --agent universal --skill '*' --copy --global --yes \
  && test -d /opt/agent-skills/.agents/skills
 
 # Interactive OpenCode state (sessions, auth, config) lives on its own
@@ -85,24 +85,26 @@ ENV XDG_DATA_HOME=/data/opencode/share \
     XDG_STATE_HOME=/data/opencode/state \
     XDG_CACHE_HOME=/var/cache/xdg
 
-# Operator-owned OpenCode configuration, declared in this repository instead
-# of edited inside the running container. It is the one place this container
-# says what a Code session can reach: the installed skill library above, and
-# the Executor MCP that fronts every external integration. The bearer comes
-# from EXECUTOR_MCP_TOKEN at run time, so the image holds no secret; without it
-# the `executor` server reports failed instead of quietly not existing.
+# This container's configuration is rendered from the service's one declaration
+# of what an agent can reach, infra/devski-code/agent-tools.json — the same file
+# the T3 environment's Claude runtime applies at boot. Declaring it once is the
+# point: two runtimes in one service that disagree about the available skills or
+# MCP servers is a bug nobody sees until an agent cannot do its job.
 #
-# It also disables the `gitlab` provider:
-# OpenCode finds that provider from the container environment, but this
-# deployment holds no GitLab Duo entitlement, so its models cannot serve a
-# Run. They still filled 23 of the 62 Agent Job model choices and pushed the
-# usable models out of sight in the Job editor.
+# The render also disables the `gitlab` provider. OpenCode finds that provider
+# from the container environment, but this deployment holds no GitLab Duo
+# entitlement, so its models cannot serve a Run. They still filled 23 of the 62
+# Agent Job model choices and pushed the usable models out of sight in the Job
+# editor.
 #
-# The file MUST stay outside /data/opencode. That path is a volume, and a
-# volume mount masks anything the image puts below it, so a configuration
-# baked into XDG_CONFIG_HOME would never be read at run time. OPENCODE_CONFIG
-# names this copy explicitly.
-COPY infra/devski-code/opencode.json /etc/devski/opencode.json
+# The output MUST stay outside /data/opencode. That path is a volume, and a
+# volume mount masks anything the image puts below it, so a configuration baked
+# into XDG_CONFIG_HOME would never be read at run time. OPENCODE_CONFIG names
+# this copy explicitly.
+COPY infra/devski-code/agent-tools.json /etc/devski/agent-tools.json
+COPY infra/devski-code/render-opencode-config.mjs /opt/devski/render-opencode-config.mjs
+RUN bun /opt/devski/render-opencode-config.mjs /etc/devski/agent-tools.json /etc/devski/opencode.json \
+ && grep -q '"executor"' /etc/devski/opencode.json
 ENV OPENCODE_CONFIG=/etc/devski/opencode.json
 
 # /data/opencode: interactive OpenCode 2 state (owner: this container).

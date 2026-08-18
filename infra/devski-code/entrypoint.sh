@@ -86,4 +86,73 @@ renameSync(temporaryPath, settingsPath);
 for (const line of announced) console.log(`[devski-code] ${line}`);
 '
 
+# --- What the Claude runtime can reach -----------------------------------
+#
+# Unlike the settings above, this is not a one-way seed: agent-tools.json is the
+# deployment's declaration and wins on every boot. Skills and MCP servers are not
+# owner preferences a redeploy should preserve — they are the single answer to
+# "what can an agent here reach", and keeping it in the image is what stops it
+# drifting. The OpenCode 2 sidecar renders its own config from the same file.
+#
+# It has to run here rather than in the image because CLAUDE_CONFIG_DIR is a
+# volume, and a mount masks whatever the image put below it.
+AGENT_TOOLS="${DEVSKI_AGENT_TOOLS:-/etc/devski/agent-tools.json}"
+
+if [ -f "$AGENT_TOOLS" ]; then
+  AGENT_TOOLS="$AGENT_TOOLS" CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-/data/claude}" node -e '
+const { readFileSync, mkdirSync, symlinkSync, rmSync, existsSync, statSync } = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const { join } = require("node:path");
+
+const declaration = JSON.parse(readFileSync(process.env.AGENT_TOOLS, "utf8"));
+const claudeDir = process.env.CLAUDE_DIR;
+mkdirSync(claudeDir, { recursive: true });
+
+// Skills: a link, not a copy, so the image stays the only source and a redeploy
+// is what moves them. Claude Code reads its user skills below CLAUDE_CONFIG_DIR.
+const [library] = declaration.skills ?? [];
+if (typeof library === "string" && existsSync(library)) {
+  const link = join(claudeDir, "skills");
+  try {
+    rmSync(link, { recursive: true, force: true });
+    symlinkSync(library, link);
+    console.log(`[devski-code] claude skills -> ${library}`);
+  } catch (cause) {
+    console.log(`[devski-code] claude skills could not be linked: ${cause.message}`);
+  }
+}
+
+// {env:VAR} keeps every credential out of the image and out of this file. A
+// server whose credential is not in the environment is left undeclared: a
+// registered server with an empty bearer answers 401 on every call inside a
+// session, which is a worse failure than not being there.
+const resolve = (value) => String(value).replace(/\{env:([A-Za-z0-9_]+)\}/g, (_, name) => process.env[name] ?? "");
+const unresolved = (value) => /\{env:[A-Za-z0-9_]+\}/.test(String(value));
+
+for (const [name, server] of Object.entries(declaration.mcpServers ?? {})) {
+  const headers = Object.entries(server.headers ?? {}).map(([key, value]) => [key, resolve(value)]);
+  const incomplete = headers.some(([, value]) => unresolved(value) || value.replace(/^Bearer\s*/i, "").trim() === "");
+  // Removed unconditionally, and before the credential check. An edited URL or a
+  // rotated token has to actually move, and a boot without the credential must
+  // not leave the server from an earlier boot behind: Claude stores the resolved
+  // bearer in its user scope on the volume, so a stale entry would keep working
+  // and outlive the declaration that is supposed to be the only answer.
+  spawnSync("claude", ["mcp", "remove", "--scope", "user", name], { stdio: "ignore" });
+  if (incomplete) {
+    console.log(`[devski-code] mcp ${name} not declared: its credential is absent from the environment`);
+    continue;
+  }
+  const args = ["mcp", "add", "--scope", "user", name, "--transport", server.type ?? "http", server.url];
+  for (const [key, value] of headers) args.push("--header", `${key}: ${value}`);
+  const added = spawnSync("claude", args, { stdio: "ignore" });
+  // Only whether it was written. `claude mcp add` does print a health line, but
+  // asynchronously and not on this handle, so reading health from here reported
+  // a working server as unreachable. `claude mcp list` is where health lives.
+  console.log(added.status === 0
+    ? `[devski-code] mcp ${name} -> ${server.url}`
+    : `[devski-code] mcp ${name} could not be declared`);
+}
+' || echo "[devski-code] agent tools could not be applied"
+fi
+
 exec "$@"
