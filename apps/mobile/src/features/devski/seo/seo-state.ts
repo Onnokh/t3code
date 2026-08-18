@@ -21,7 +21,28 @@ export type SeoSite = {
 };
 
 export type SeoFreshness = {
+  /**
+   * When this Site's data last changed. Part of the contract and read by
+   * nothing on screen, on purpose: shown as an age it stood still through
+   * refreshes that had worked, because a sync that finds nothing new to store
+   * changes nothing here, and the owner read the frozen line as a broken
+   * feature. `rangeEnd` answers how current the data is and `checkedAt`
+   * answers for the gesture; between them there is no question left for this
+   * field to answer.
+   */
   readonly syncedAt: string | null;
+  /**
+   * When Ranksta last asked Google about this Site, as opposed to `syncedAt`,
+   * which is when the answer last changed anything. The two come apart on
+   * purpose: a sync that runs and finds nothing new to store leaves `syncedAt`
+   * where it was, so `checkedAt` is the only one of the pair that can answer
+   * for a refresh gesture.
+   *
+   * Optional because the Gateway is only now learning to send it. Absent and
+   * `null` mean the same thing — this device was told nothing — and neither may
+   * be rendered as a check that happened.
+   */
+  readonly checkedAt?: string | null;
   readonly rangeStart: string | null;
   readonly rangeEnd: string | null;
   readonly stale: boolean;
@@ -572,41 +593,69 @@ export function formatDateRange(start: string | null, end: string | null): strin
 }
 
 /**
- * What the payload on screen covers, and whether it came from the Gateway's
- * outage fallback.
+ * One Search Console day, as Ranksta writes it, or `null` when the value is
+ * not one.
  *
- * The synced time used to be part of this line and is not any more. The
- * Gateway populates `syncedAt` on the `status` read alone, so on every other
- * read this line said "Sync time unknown" — which is true of the payload and
- * useless beside a synced time the screen now reads separately and knows.
+ * Both tests earn their place. The pattern turns away an instant or any other
+ * stray string, and `Date.parse` turns away a well-shaped impossibility like
+ * `2026-13-45`, which the pattern is happy with.
  */
-export function describeCoverage(freshness: SeoFreshness): string {
-  const range =
-    freshness.rangeStart && freshness.rangeEnd
-      ? `Data ${freshness.rangeStart} – ${freshness.rangeEnd}`
-      : "Data window unknown";
-  return freshness.stale ? `STALE · ${range}` : range;
+function readSearchConsoleDay(value: string | null): string | null {
+  if (value === null || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  return Number.isNaN(Date.parse(value)) ? null : value;
 }
 
 /**
- * When this Site's Search Console data last arrived, as the `status` read
- * reports it.
+ * How long ago Ranksta last asked Google, or `null` when this device was told
+ * nothing it is allowed to repeat.
  *
- * `null` is said to be unknown rather than shown as a moment: the Gateway
- * sends `null` when it did not ask, and "Last synced <1m ago" over data from
- * last week is the one thing this line must never say. An instant nobody can
- * parse is unknown for the same reason — `relativeTime` answers "<1m" for
- * anything it cannot read, which would be exactly that invented moment.
- *
- * This is the age of the data and nothing else. It is not `stale`, which says
- * which side of an outage the payload came from, and not `unconfirmed`, which
- * says the value came off this device and no read has confirmed it yet.
+ * This is the only place `relativeTime` may be handed a `checkedAt`. That
+ * helper answers "<1m" for every string it cannot parse, so an unreadable
+ * instant reaching it would surface as a check that had just happened —
+ * precisely the invented moment this whole line exists to stop. Parsing first
+ * and refusing outright is what makes "just now" a claim worth trusting.
  */
-export function describeSyncedAt(syncedAt: string | null): string {
-  if (syncedAt === null || Number.isNaN(Date.parse(syncedAt))) {
-    return "Last sync time unknown";
-  }
-  return `Last synced ${relativeTime(syncedAt)} ago`;
+function describeCheck(checkedAt: string | null | undefined): string | null {
+  if (typeof checkedAt !== "string" || Number.isNaN(Date.parse(checkedAt))) return null;
+  const elapsed = relativeTime(checkedAt);
+  return elapsed === "<1m" ? "checked just now" : `checked ${elapsed} ago`;
+}
+
+/**
+ * The date this Site's data reaches, how recently Ranksta looked for more, and
+ * whether the answer came from the Gateway's outage fallback. Every SEO screen
+ * shows this one line, built from the `status` read.
+ *
+ * The date is `rangeEnd`, which on `status` is Ranksta's own `lastDate` — the
+ * last day Search Console has figures for. It replaces a relative "last synced"
+ * age, and the difference is the point. An age is recomputed against the clock
+ * every render, so it moves whether or not anything happened, and a stalled one
+ * is indistinguishable from a working one. A date moves when, and only when,
+ * there is genuinely newer data.
+ *
+ * `rangeStart` is deliberately left out. On `status` it is `firstDate`, the
+ * first day ever collected, which is a fact about the archive rather than about
+ * freshness, and putting a years-old date at the front of the line buries the
+ * one date the owner asked for. The screens that do care about their own
+ * comparison window already print it beside the numbers it belongs to.
+ *
+ * The day is rendered exactly as Ranksta wrote it, never through a locale
+ * formatter. "2026-08-14" is a Search Console day, not an instant, and turning
+ * it into a `Date` puts it at UTC midnight — which every timezone behind UTC
+ * would then render as the 13th. A date that is quietly off by one is worse
+ * than a plain ISO one.
+ *
+ * The check is appended only when there is a readable instant to append. The
+ * Gateway is only now learning to send `checkedAt`, so for a while it will send
+ * nothing, and a line that claims a check it was never told about is the same
+ * class of mistake as the age it replaces.
+ */
+export function describeCoverage(freshness: SeoFreshness | null): string {
+  const day = freshness === null ? null : readSearchConsoleDay(freshness.rangeEnd);
+  const date = day === null ? "Data date unknown" : `Data through ${day}`;
+  const check = freshness === null ? null : describeCheck(freshness.checkedAt);
+  const line = check === null ? date : `${date} · ${check}`;
+  return freshness?.stale === true ? `STALE · ${line}` : line;
 }
 
 /** Index state with its inspection date when Ranksta supplied one. */

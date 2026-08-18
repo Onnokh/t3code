@@ -14,7 +14,7 @@ import {
   formatWindow,
   PARTIAL_VISIBILITY_NOTE,
 } from "./seo-state";
-import { SeoFreshnessBanner, SeoSyncedTime } from "./SeoUi";
+import { SeoDataDate, SeoFreshnessBanner } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 type Params = { readonly path: string };
@@ -69,7 +69,7 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
       <Text className="font-t3-bold text-foreground" selectable>
         {path}
       </Text>
-      <SeoSyncedTime syncedAt={refresh.syncedAt} />
+      <SeoDataDate freshness={refresh.freshness} />
       <SeoFreshnessBanner read={read} />
       {page ? (
         <>

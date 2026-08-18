@@ -3,9 +3,9 @@ import { Pressable, View } from "react-native";
 import { AppText as Text } from "../../../components/AppText";
 import {
   describeCoverage,
-  describeSyncedAt,
   displayState,
   displayableEnvelope,
+  type SeoFreshness,
   type SeoRead,
 } from "./seo-state";
 
@@ -103,18 +103,25 @@ export function SeoStaleNote(props: { readonly read: SeoRead<unknown> }) {
 }
 
 /**
- * When this Site's Search Console data last arrived, which is what a pull to
- * refresh has to show for itself.
+ * The date this Site's data reaches, and how recently Ranksta looked for more.
+ * Every SEO screen shows it, and it is what a pull to refresh shows for itself.
  *
- * Always rendered, an unknown time included: a line that disappears leaves a
- * gap where a time belongs, and a gap reads as "nothing has ever synced" when
- * the Gateway only meant it did not ask. It sits apart from the freshness
- * banner on purpose — that banner is about which read produced the payload,
- * this is about how old the data behind it is, and one is regularly true while
- * the other is not.
+ * It replaces a relative "last synced" age. The age was the wrong instrument:
+ * it is recalculated against the clock on every render, so it moves whether or
+ * not anything happened, and it stood still through refreshes that had worked
+ * because the instant behind it only moves when the data changes. A date and a
+ * check answer the two questions the owner actually asked — how current is
+ * this, and did my pull do anything — and neither can be true by accident.
+ *
+ * Always rendered, an unknown date included: a line that disappears leaves a
+ * gap where a date belongs, and a gap reads as "there has never been any data"
+ * when the truth is only that this device has not been told the date yet. It
+ * sits apart from the freshness banner on purpose — that banner is about which
+ * read produced the payload, this is about the data behind it, and one is
+ * regularly true while the other is not.
  */
-export function SeoSyncedTime(props: { readonly syncedAt: string | null }) {
-  return <Text className="text-xs text-foreground-muted">{describeSyncedAt(props.syncedAt)}</Text>;
+export function SeoDataDate(props: { readonly freshness: SeoFreshness | null }) {
+  return <Text className="text-xs text-foreground-muted">{describeCoverage(props.freshness)}</Text>;
 }
 
 /** A section title beside the link to the screen that holds all of it. */

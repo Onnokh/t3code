@@ -4,7 +4,6 @@ import {
   applySeoResult,
   describeCoverage,
   describeIndexState,
-  describeSyncedAt,
   displayState,
   displayableEnvelope,
   formatCtr,
@@ -399,51 +398,94 @@ describe("formatting", () => {
     expect(describeIndexState("unknown", null)).toBe("Index state unknown");
     expect(describeIndexState("future-state", null)).toBe("future-state");
   });
-
-  it("marks stale coverage visibly and shows the data range", () => {
-    expect(
-      describeCoverage({
-        syncedAt: "2026-08-15T05:00:00.000Z",
-        rangeStart: "2026-08-01",
-        rangeEnd: "2026-08-14",
-        stale: false,
-      }),
-    ).toBe("Data 2026-08-01 – 2026-08-14");
-    expect(
-      describeCoverage({ syncedAt: null, rangeStart: null, rangeEnd: null, stale: true }),
-    ).toBe("STALE · Data window unknown");
-  });
 });
 
-describe("the last synced time", () => {
-  const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
-
-  it("shows how long ago the status read says the data arrived", () => {
-    expect(describeSyncedAt(hoursAgo(3))).toBe("Last synced 3h ago");
-    expect(describeSyncedAt(hoursAgo(50))).toBe("Last synced 2d ago");
+describe("the date of the data", () => {
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+  const freshness = (overrides: Partial<SeoFreshness> = {}): SeoFreshness => ({
+    syncedAt: "2026-08-15T05:00:00.000Z",
+    rangeStart: "2024-01-01",
+    rangeEnd: "2026-08-14",
+    stale: false,
+    ...overrides,
   });
 
-  it("reads the synced time off an envelope whether or not the payload is stale", () => {
-    const synced = (stale: boolean): SeoFreshness => ({
-      ...envelope(historyData, stale).freshness,
-      syncedAt: hoursAgo(1),
-    });
-    // A stale payload came from the Gateway's outage fallback and still
-    // carries the synced time it remembered; staleness is not the data's age.
-    expect(describeSyncedAt(synced(true).syncedAt)).toBe("Last synced 1h ago");
-    expect(describeSyncedAt(synced(false).syncedAt)).toBe("Last synced 1h ago");
+  it("leads with the day the data reaches, not the day the archive starts", () => {
+    // The owner asked for the date of the data. On `status` `rangeStart` is the
+    // first day ever collected, so putting it first buries the only date that
+    // says how current the numbers are behind one that never changes.
+    expect(describeCoverage(freshness())).toBe("Data through 2026-08-14");
   });
 
-  it("never invents a time for a read that reports none", () => {
-    // Every read but `status` answers null, and null means the Gateway did not
-    // ask — not that the data arrived just now.
-    const plain: SeoFreshness = { ...envelope(historyData).freshness, syncedAt: null };
-    expect(describeSyncedAt(plain.syncedAt)).toBe("Last sync time unknown");
-    expect(describeSyncedAt(null)).toBe("Last sync time unknown");
+  it("renders the day exactly as Ranksta wrote it", () => {
+    // A Search Console day is a day, not an instant. Formatted through a Date
+    // it lands on UTC midnight and reads as the previous day anywhere behind
+    // UTC, and a date that is silently off by one is worse than an ISO one.
+    expect(describeCoverage(freshness({ rangeEnd: "2026-01-01" }))).toBe("Data through 2026-01-01");
   });
 
-  it("treats an unreadable instant as unknown rather than as this minute", () => {
-    expect(describeSyncedAt("not an instant")).toBe("Last sync time unknown");
-    expect(describeSyncedAt("")).toBe("Last sync time unknown");
+  it("says the check happened when the Gateway says when", () => {
+    expect(describeCoverage(freshness({ checkedAt: minutesAgo(0) }))).toBe(
+      "Data through 2026-08-14 · checked just now",
+    );
+    expect(describeCoverage(freshness({ checkedAt: minutesAgo(7) }))).toBe(
+      "Data through 2026-08-14 · checked 7m ago",
+    );
+  });
+
+  it("claims no check at all when the Gateway sends none", () => {
+    // The deployed Gateway does not send `checkedAt` yet, so an absent field is
+    // the ordinary case for a while and must read as silence, not as a check.
+    // A `null` is the same statement made explicitly.
+    expect(describeCoverage(freshness())).toBe("Data through 2026-08-14");
+    expect(describeCoverage(freshness({ checkedAt: null }))).toBe("Data through 2026-08-14");
+  });
+
+  it("never lets an unreadable instant read as a check that just happened", () => {
+    // `relativeTime` answers "<1m" for anything it cannot parse, so a malformed
+    // `checkedAt` reaching it would claim a check this second over data that
+    // has not been looked at in a week. The claim is dropped instead.
+    expect(describeCoverage(freshness({ checkedAt: "not an instant" }))).toBe(
+      "Data through 2026-08-14",
+    );
+    expect(describeCoverage(freshness({ checkedAt: "" }))).toBe("Data through 2026-08-14");
+  });
+
+  it("never invents a date out of an unreadable day", () => {
+    expect(describeCoverage(freshness({ rangeEnd: null }))).toBe("Data date unknown");
+    expect(describeCoverage(freshness({ rangeEnd: "yesterday" }))).toBe("Data date unknown");
+    // Well shaped and still not a day that exists.
+    expect(describeCoverage(freshness({ rangeEnd: "2026-13-45" }))).toBe("Data date unknown");
+  });
+
+  it("says the date is unknown before any status read has landed", () => {
+    // A screen opened on an unpaired device, or one whose status read failed
+    // with nothing retained, has no date to show and must not imply one.
+    expect(describeCoverage(null)).toBe("Data date unknown");
+  });
+
+  it("marks a date the Gateway served from its outage fallback", () => {
+    // `stale` says which side of an outage the answer came from. It is not the
+    // age of the data and not this device's cache, and all three can be true at
+    // once, so it gets its own marker rather than changing the date.
+    expect(describeCoverage(freshness({ stale: true, checkedAt: minutesAgo(3) }))).toBe(
+      "STALE · Data through 2026-08-14 · checked 3m ago",
+    );
+    expect(describeCoverage(freshness({ stale: true, rangeEnd: null }))).toBe(
+      "STALE · Data date unknown",
+    );
+  });
+
+  it("says nothing about a sync anywhere in the line", () => {
+    // The wording a previous attempt shipped and the owner rejected. The line
+    // reports the data and the check; the gesture's own bookkeeping is not the
+    // owner's business.
+    const lines = [
+      describeCoverage(freshness()),
+      describeCoverage(freshness({ checkedAt: minutesAgo(2) })),
+      describeCoverage(freshness({ stale: true })),
+      describeCoverage(null),
+    ];
+    for (const line of lines) expect(line.toLowerCase()).not.toContain("sync");
   });
 });
