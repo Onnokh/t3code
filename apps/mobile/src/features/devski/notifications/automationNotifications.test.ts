@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import * as NodeFS from "node:fs";
 
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 vi.mock("@expo/ui/swift-ui", () => ({
@@ -122,6 +123,23 @@ describe("offerAutomationNotifications", () => {
       makeDeps({ readPushToken: async () => null }),
     );
     expect(outcome).toBe("unavailable");
+  });
+});
+
+describe("the card's lifetime", () => {
+  it("is never decided here: the app does not end a card it did not create", () => {
+    // One card per device carries rows from the Harness, the API and MCP
+    // alike, and this device can only see the Automation ones. An app-side
+    // end therefore dismissed other producers' work; the Gateway now sends
+    // a real end with a dismissal date, so the app reports tokens and
+    // nothing more. Asserted against the source because the regression is
+    // the *presence* of an ActivityKit end anywhere in this module, under
+    // whatever name it is reintroduced.
+    const source = NodeFS.readFileSync(
+      new URL("./automationNotifications.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).not.toMatch(/\.end\(/);
   });
 });
 

@@ -17,14 +17,6 @@ import AgentActivity from "../../../widgets/AgentActivity";
 import { supportsAgentAwarenessPush } from "../../agent-awareness/capabilities";
 import { requestAgentNotificationPermission } from "../../agent-awareness/notificationPermissions";
 import { resolveApsEnvironment } from "../../agent-awareness/registrationPayload";
-import { useAutomationsClient, type AutomationsClient } from "../automations/automations-api";
-import { isRunActive, type RunState } from "../automations/automations-state";
-import {
-  automationActivityRuns,
-  buildAutomationActivityProps,
-  decideAutomationActivity,
-  type AutomationActivityRun,
-} from "./automation-activity";
 
 /**
  * Contextual Automation Notification onboarding (PLO-420).
@@ -210,15 +202,6 @@ export async function registerLiveActivityTokenWithGateway(input: {
 }
 
 /**
- * Runs this device armed the Activity for, kept for the life of the
- * process only. They exist to stop a reconciliation that overtakes the
- * Gateway from ending a card armed moments ago; after a relaunch an empty
- * set is the right answer, because a card that outlived the process that
- * armed it has nothing pending.
- */
-const armedAutomationRuns = new Map<string, number>();
-
-/**
  * Hands the Gateway the push token of every Live Activity on this device,
  * including one the Gateway started itself while Devski was closed.
  *
@@ -290,6 +273,18 @@ async function registerActivityPushToken(input: {
  * ones triggered while the app happened to be open — and two starters
  * would mean two cards for the same work.
  *
+ * It does not end one either. Reporting tokens is the whole of this
+ * device's part in the card's lifetime: the Gateway computes `start`,
+ * `update` and `end` from the aggregate it owns, and that aggregate holds
+ * rows from producers this device cannot see — the API and MCP callers
+ * write their own rows beside the Harness's. Devski once ended every
+ * instance whenever Automation state left nothing to follow, which read as
+ * a safety valve and behaved as a second owner: an API-pushed card died
+ * about a second after it appeared, because no Automation Run explained
+ * it. Ending only cards attributable to Runs was the tempting narrowing
+ * and still leaves two opinions about when one shared resource dies, so
+ * the app now has none.
+ *
  * Scanning at launch and on foreground is not enough on its own. A card
  * the Gateway starts while the app is away gets a fresh, card-scoped token
  * from iOS, and only this device can report it. Without it the Gateway
@@ -333,64 +328,6 @@ export function useDevskiActivityTokenRegistration(): void {
       tokens.remove();
     };
   }, [bearerToken, httpBaseUrl]);
-}
-
-/**
- * Ends the Devski Activity once the observed Runs leave it nothing to
- * follow. This is the way out the Gateway cannot provide: it only ever
- * pushes `update`, so without this a failed, timed out, or cancelled Run
- * keeps its card on the Lock Screen for hours. The dismissal is immediate
- * — a failure is already delivered as its own alert, and an ended card
- * that lingers would still occupy the one aggregate the next Run needs.
- */
-export async function settleDevskiActivityForAutomationRuns(
-  runs: readonly AutomationActivityRun[],
-  now = Date.now(),
-): Promise<void> {
-  if (Platform.OS !== "ios" || !supportsAgentAwarenessPush()) return;
-  const decision = decideAutomationActivity({
-    armed: [...armedAutomationRuns].map(([runId, armedAt]) => ({ runId, armedAt })),
-    runs,
-    now,
-  });
-  if (decision.kind === "keep") return;
-  armedAutomationRuns.clear();
-  try {
-    await Promise.all(AgentActivity.getInstances().map((activity) => activity.end("immediate")));
-  } catch {
-    // ActivityKit is unavailable or the card is already gone; either way
-    // there is nothing left on the Lock Screen to end.
-  }
-}
-
-/**
- * Reconciles the Devski Activity against authoritative Job state. A read
- * that fails changes nothing: an unreachable Gateway is not evidence that
- * a Run finished.
- */
-export async function reconcileDevskiActivity(client: AutomationsClient): Promise<void> {
-  const result = await client.listJobs();
-  if (result.kind !== "ok") return;
-  await settleDevskiActivityForAutomationRuns(automationActivityRuns(result.value));
-}
-
-/**
- * Keeps the Devski Activity from outliving its Runs anywhere in the app.
- * A Run usually finishes while Devski is closed or on another screen, so
- * the card is reconciled at launch and on every foreground rather than
- * only where Automations happen to be on screen.
- */
-export function useDevskiActivityReconciliation(): void {
-  const client = useAutomationsClient();
-
-  useEffect(() => {
-    if (!client) return;
-    void reconcileDevskiActivity(client);
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") void reconcileDevskiActivity(client);
-    });
-    return () => subscription.remove();
-  }, [client]);
 }
 
 /**

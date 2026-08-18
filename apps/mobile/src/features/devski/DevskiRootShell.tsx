@@ -17,7 +17,6 @@ import { ConnectionsNewRouteScreen } from "../connection/ConnectionsNewRouteScre
 import { useConnectionController } from "../connection/useConnectionController";
 import { codeTabBarDisplay } from "./devski-shell-chrome";
 import {
-  useDevskiActivityReconciliation,
   useDevskiActivityTokenRegistration,
   useDevskiPushToStartRegistration,
 } from "./notifications/automationNotifications";
@@ -145,11 +144,6 @@ const PairingNavigation = createStaticNavigation(PairingStack);
 export function DevskiRootShell(props: Pick<NavigationProps, "linking" | "theme">) {
   const { environments, isReady } = useEnvironments();
   const { removeEnvironment } = useConnectionController();
-  // A Run finishes whether or not Automations is on screen, so the shell
-  // owns ending the Devski Activity: at launch it clears a card that
-  // outlived the process that armed it, and on foreground one whose Run
-  // ended while Devski was closed.
-  useDevskiActivityReconciliation();
   // The Gateway can only create a card if it holds this device's
   // push-to-start token, and that is the whole point: a scheduled Run
   // fires while Devski is closed.
