@@ -18,6 +18,7 @@ import { useConnectionController } from "../connection/useConnectionController";
 import { codeTabBarDisplay } from "./devski-shell-chrome";
 import {
   useDevskiActivityTokenRegistration,
+  useDevskiAlertTokenRegistration,
   useDevskiPushToStartRegistration,
 } from "./notifications/automationNotifications";
 import { AutomationJobDetailScreen } from "./automations/AutomationJobDetailScreen";
@@ -151,6 +152,12 @@ export function DevskiRootShell(props: Pick<NavigationProps, "linking" | "theme"
   // A card the Gateway started gets its activity token issued to the app,
   // so the Gateway cannot update or end it until this hands it over.
   useDevskiActivityTokenRegistration();
+  // Live Activity tokens need no authorization, so a device can show cards
+  // while holding no alert token at all — which is how this install had
+  // never delivered a single Devski notification. This registers the alert
+  // token whenever iOS permission already allows one, and prompts for
+  // nothing.
+  useDevskiAlertTokenRegistration();
   const authorizedEnvironments = environments.filter(
     (environment) => environment.connection.failureReason !== "authentication",
   );

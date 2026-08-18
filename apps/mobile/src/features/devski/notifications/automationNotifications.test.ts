@@ -55,6 +55,7 @@ function makeDeps(overrides: Partial<AutomationNotificationDeps> = {}): Automati
   return {
     wasOffered: async () => false,
     markOffered: async () => undefined,
+    permissionStatus: async () => "undetermined",
     requestPermission: async () => "granted",
     readPushToken: async () => "apns-token-1",
     register: async () => true,
@@ -90,6 +91,35 @@ describe("offerAutomationNotifications", () => {
       makeDeps({ wasOffered: async () => true, requestPermission }),
     );
     expect(outcome).toBe("already_offered");
+    expect(requestPermission).not.toHaveBeenCalled();
+  });
+
+  it("registers a device that was offered notifications but holds no token", async () => {
+    // The reported defect: this install had been asked once, never got a
+    // token, and the marker foreclosed every later attempt. Permission is
+    // already granted here, so reaching a registered state costs no dialog
+    // and the marker has nothing to protect.
+    const requestPermission = vi.fn(async () => "granted" as const);
+    const markOffered = vi.fn(async () => undefined);
+    const outcome = await offerAutomationNotifications(
+      makeDeps({
+        wasOffered: async () => true,
+        permissionStatus: async () => "granted",
+        requestPermission,
+        markOffered,
+      }),
+    );
+    expect(outcome).toBe("registered");
+    expect(requestPermission).not.toHaveBeenCalled();
+    expect(markOffered).not.toHaveBeenCalled();
+  });
+
+  it("leaves a denied permission to iOS Settings instead of re-asking", async () => {
+    const requestPermission = vi.fn(async () => "granted" as const);
+    const outcome = await offerAutomationNotifications(
+      makeDeps({ permissionStatus: async () => "denied", requestPermission }),
+    );
+    expect(outcome).toBe("permission_denied");
     expect(requestPermission).not.toHaveBeenCalled();
   });
 
