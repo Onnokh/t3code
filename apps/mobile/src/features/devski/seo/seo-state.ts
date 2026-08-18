@@ -1,11 +1,14 @@
 /**
- * Pure interpretation of the Devski SEO Read Contract
- * (`/api/devski/v1/seo/*`). The Gateway proxies Ranksta's Paradise and
- * wraps every site-scoped read in a `SeoEnvelope`; this module classifies
- * those responses for the plain SEO screens. It preserves Ranksta's
- * semantics — verdicts, reasons, trueTotals, phases, and index state are
- * displayed as returned and never recomputed on the phone. Unknown future
- * enum values stay display-safe strings.
+ * Pure interpretation of the Devski SEO Contract (`/api/devski/v1/seo/*`).
+ * The Gateway proxies Ranksta's Paradise and wraps every site-scoped read in
+ * a `SeoEnvelope`; this module classifies those responses for the plain SEO
+ * screens. It preserves Ranksta's semantics — verdicts, reasons, trueTotals,
+ * phases, and index state are displayed as returned and never recomputed on
+ * the phone. Unknown future enum values stay display-safe strings.
+ *
+ * The contract has one operation, the Site sync, and this module classifies
+ * its answer too. Every accepted sync request is a success, a cooldown
+ * included; see `describeSyncRequest`.
  */
 
 export type SeoSite = {
@@ -327,6 +330,47 @@ export function readEnvelope<T>(body: unknown): SeoEnvelope<T> | null {
 }
 
 /**
+ * What became of a sync request. `started` and `already-running` both mean
+ * Ranksta is going to look at Search Console; `cooling-down` means the
+ * Gateway's five-minute floor for this Site refused to spend the quota
+ * again yet. The Gateway answers all three with 202, so none of them is an
+ * error.
+ */
+export type SeoSyncState = "started" | "already-running" | "cooling-down";
+
+export type SeoSyncRequested = {
+  readonly site: { readonly id: string; readonly label: string; readonly url: string };
+  readonly sync: {
+    readonly state: SeoSyncState;
+    readonly requestedAt: string;
+    /** A number only for `cooling-down`. */
+    readonly retryAfterSeconds: number | null;
+  };
+  readonly requestId: string;
+};
+
+/** Reads one accepted sync request; the Site and the sync state are mandatory. */
+export function readSyncRequested(body: unknown): SeoSyncRequested | null {
+  const candidate = body as {
+    site?: { id?: unknown };
+    sync?: { state?: unknown; requestedAt?: unknown; retryAfterSeconds?: unknown };
+  } | null;
+  if (!candidate || typeof candidate !== "object") return null;
+  if (!candidate.site || typeof candidate.site.id !== "string") return null;
+  const sync = candidate.sync;
+  if (!sync || typeof sync !== "object") return null;
+  if (
+    sync.state !== "started" &&
+    sync.state !== "already-running" &&
+    sync.state !== "cooling-down"
+  ) {
+    return null;
+  }
+  if (typeof sync.requestedAt !== "string") return null;
+  return candidate as SeoSyncRequested;
+}
+
+/**
  * Resolves the effective Site: the persisted choice when it is still
  * configured, otherwise the first available Site, otherwise the first
  * configured Site. The server never silently assumes a Site — this rule is
@@ -345,11 +389,16 @@ export function resolveSelectedSite(
 /**
  * One screen's read lifecycle. `ready` keeps the latest envelope; a failed
  * revalidation retains the last successful envelope so the screen can show
- * visibly stale data instead of losing it.
+ * visibly stale data instead of losing it. `unconfirmed` marks an envelope
+ * this device stored at an earlier launch and no read has confirmed yet.
  */
 export type SeoRead<T> =
   | { readonly kind: "loading" }
-  | { readonly kind: "ready"; readonly envelope: SeoEnvelope<T> }
+  | {
+      readonly kind: "ready";
+      readonly envelope: SeoEnvelope<T>;
+      readonly unconfirmed?: boolean;
+    }
   | {
       readonly kind: "unavailable";
       readonly message: string;
@@ -383,12 +432,20 @@ export function displayableEnvelope<T>(read: SeoRead<T>): SeoEnvelope<T> | null 
   return null;
 }
 
-export type SeoDisplayState = "loading" | "current" | "stale" | "unavailable" | "pairing-required";
+export type SeoDisplayState =
+  | "loading"
+  | "current"
+  | "unconfirmed"
+  | "stale"
+  | "unavailable"
+  | "pairing-required";
 
 /**
- * The visible data state: `current` for a live read, `stale` when the
- * Gateway marked the payload stale or the latest revalidation failed while
- * older data remains displayable, `unavailable` when nothing can render.
+ * The visible data state: `current` for a live read, `unconfirmed` for what
+ * this device stored at an earlier launch while the live read is in flight,
+ * `stale` when the Gateway marked the payload stale or the latest
+ * revalidation failed while older data remains displayable, `unavailable`
+ * when nothing can render.
  */
 export function displayState(read: SeoRead<unknown>): SeoDisplayState {
   switch (read.kind) {
@@ -397,7 +454,8 @@ export function displayState(read: SeoRead<unknown>): SeoDisplayState {
     case "pairing-required":
       return "pairing-required";
     case "ready":
-      return read.envelope.freshness.stale ? "stale" : "current";
+      if (read.envelope.freshness.stale) return "stale";
+      return read.unconfirmed === true ? "unconfirmed" : "current";
     case "unavailable":
       return read.retained ? "stale" : "unavailable";
   }
@@ -551,4 +609,54 @@ export function summarizeSeoError(result: SeoResult<unknown>): string {
   }
   if (result.kind === "error") return result.error.message;
   return "The request failed.";
+}
+
+/** "4 minutes", for the cooldown the Gateway reports in seconds. */
+export function formatRetryAfter(seconds: number): string {
+  const whole = Math.max(1, Math.ceil(seconds));
+  if (whole < 60) return whole === 1 ? "1 second" : `${whole} seconds`;
+  const minutes = Math.ceil(whole / 60);
+  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+}
+
+/**
+ * What pull to refresh says about the sync it asked for.
+ *
+ * Refresh means "read live now, and ask Ranksta to look at Search Console
+ * again". It does not mean "get newer data": Search Console lags by days, a
+ * sync outlives the gesture by minutes, and the Gateway answers for the
+ * request rather than the result. So every tone here is informational —
+ * `requested` for a sync that is happening, `waiting` for the per-Site
+ * cooldown, and `failed` only for a request the Gateway did not accept,
+ * which leaves the live read the screen already shows untouched.
+ */
+export type SeoSyncNotice = {
+  readonly tone: "requested" | "waiting" | "failed";
+  readonly message: string;
+};
+
+export function describeSyncRequest(result: SeoResult<SeoSyncRequested>): SeoSyncNotice {
+  if (result.kind === "ok") {
+    const { state, retryAfterSeconds } = result.value.sync;
+    if (state === "cooling-down") {
+      return {
+        tone: "waiting",
+        message:
+          retryAfterSeconds === null
+            ? "This Site synced recently, so Ranksta did not ask Google again. Pull to refresh later."
+            : `This Site synced recently, so Ranksta did not ask Google again. Pull to refresh in ${formatRetryAfter(retryAfterSeconds)}.`,
+      };
+    }
+    return {
+      tone: "requested",
+      message:
+        state === "already-running"
+          ? "A sync is already running for this Site. Search Console lags by days, so new data can appear on a later refresh."
+          : "Sync requested. Search Console lags by days, so a sync often changes nothing, and new data can appear on a later refresh.",
+    };
+  }
+  return {
+    tone: "failed",
+    message: `The data above is a live read. Ranksta was not asked to sync: ${summarizeSeoError(result)}`,
+  };
 }

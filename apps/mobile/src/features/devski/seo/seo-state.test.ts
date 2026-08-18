@@ -3,17 +3,20 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   applySeoResult,
   describeFreshness,
+  describeSyncRequest,
   describeIndexState,
   displayState,
   displayableEnvelope,
   formatCtr,
   formatMetrics,
+  formatRetryAfter,
   formatWindow,
   indexCoverage,
   interpretSeoResponse,
   pagesNeedingAttention,
   readEnvelope,
   readSites,
+  readSyncRequested,
   resolveSelectedSite,
   summarizeSeoError,
   trueTotalsFromHistory,
@@ -21,6 +24,7 @@ import {
   type SeoEnvelope,
   type SeoHistoryData,
   type SeoPageRow,
+  type SeoRead,
   type SeoSite,
 } from "./seo-state";
 
@@ -239,6 +243,131 @@ describe("applySeoResult and displayState", () => {
     const read = applySeoResult(ready, { kind: "pairing-required" });
     expect(read.kind).toBe("pairing-required");
     expect(displayState(read)).toBe("pairing-required");
+  });
+
+  it("classifies what this device stored at an earlier launch as unconfirmed", () => {
+    expect(
+      displayState({ kind: "ready", envelope: envelope(historyData), unconfirmed: true }),
+    ).toBe("unconfirmed");
+  });
+
+  it("stops calling a stored envelope unconfirmed once a read replaces it", () => {
+    const hydrated: SeoRead<SeoHistoryData> = {
+      kind: "ready",
+      envelope: envelope(historyData),
+      unconfirmed: true,
+    };
+    expect(
+      displayState(applySeoResult(hydrated, { kind: "ok", value: envelope(historyData) })),
+    ).toBe("current");
+  });
+
+  it("retains a stored envelope when the read that would confirm it fails", () => {
+    const hydrated: SeoRead<SeoHistoryData> = {
+      kind: "ready",
+      envelope: envelope(historyData),
+      unconfirmed: true,
+    };
+    const failed = applySeoResult(hydrated, {
+      kind: "error",
+      error: { code: "unavailable", message: "The SEO service is unreachable." },
+    });
+    expect(displayState(failed)).toBe("stale");
+    expect(displayableEnvelope(failed)?.requestId).toBe("req-1");
+  });
+});
+
+describe("the sync operation", () => {
+  const requested = (
+    state: string,
+    retryAfterSeconds: number | null = null,
+  ): Record<string, unknown> => ({
+    site: { id: "sleevy", label: "Sleevy", url: "https://sleevy.app" },
+    sync: { state, requestedAt: "2026-08-18T09:00:00.000Z", retryAfterSeconds },
+    requestId: "req-2",
+  });
+
+  it("reads an accepted request", () => {
+    const value = readSyncRequested(requested("started"));
+    expect(value?.sync.state).toBe("started");
+    expect(value?.site.id).toBe("sleevy");
+  });
+
+  it("refuses a body with an unknown sync state", () => {
+    expect(readSyncRequested(requested("finished"))).toBeNull();
+  });
+
+  it("refuses a body without a sync block", () => {
+    expect(readSyncRequested({ site: { id: "sleevy" }, requestId: "req-2" })).toBeNull();
+  });
+
+  it("treats every 202 as a success, cooldown included", () => {
+    for (const state of ["started", "already-running", "cooling-down"]) {
+      const result = interpretSeoResponse(
+        {
+          kind: "response",
+          status: 202,
+          body: requested(state, state === "cooling-down" ? 240 : null),
+        },
+        readSyncRequested,
+      );
+      expect(result.kind).toBe("ok");
+      expect(describeSyncRequest(result).tone).not.toBe("failed");
+    }
+  });
+
+  it("says a sync was requested, and that new data comes later", () => {
+    const notice = describeSyncRequest({
+      kind: "ok",
+      value: readSyncRequested(requested("started"))!,
+    });
+    expect(notice.tone).toBe("requested");
+    expect(notice.message).toContain("later refresh");
+  });
+
+  it("treats a sync that is already running as a request that landed", () => {
+    const notice = describeSyncRequest({
+      kind: "ok",
+      value: readSyncRequested(requested("already-running"))!,
+    });
+    expect(notice.tone).toBe("requested");
+    expect(notice.message).toContain("already running");
+  });
+
+  it("says when the cooldown allows another request rather than only refusing", () => {
+    const notice = describeSyncRequest({
+      kind: "ok",
+      value: readSyncRequested(requested("cooling-down", 240))!,
+    });
+    expect(notice.tone).toBe("waiting");
+    expect(notice.message).toContain("4 minutes");
+  });
+
+  it("falls back to no time when the cooldown reports none", () => {
+    const notice = describeSyncRequest({
+      kind: "ok",
+      value: readSyncRequested(requested("cooling-down"))!,
+    });
+    expect(notice.tone).toBe("waiting");
+    expect(notice.message).toContain("later");
+  });
+
+  it("keeps a refused request away from the reads it did not touch", () => {
+    const notice = describeSyncRequest({
+      kind: "error",
+      error: { code: "not_found", message: "That Site is not configured." },
+    });
+    expect(notice.tone).toBe("failed");
+    expect(notice.message).toContain("live read");
+    expect(notice.message).toContain("That Site is not configured.");
+  });
+
+  it("rounds the cooldown up to whole units", () => {
+    expect(formatRetryAfter(1)).toBe("1 second");
+    expect(formatRetryAfter(45)).toBe("45 seconds");
+    expect(formatRetryAfter(60)).toBe("1 minute");
+    expect(formatRetryAfter(61)).toBe("2 minutes");
+    expect(formatRetryAfter(300)).toBe("5 minutes");
   });
 });
 

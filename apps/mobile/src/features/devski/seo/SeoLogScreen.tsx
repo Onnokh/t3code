@@ -1,13 +1,13 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
 
 import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
 import { ListRow, SectionTitle } from "../automations/AutomationsUi";
-import { useSeoClient, useSeoRead } from "./seo-api";
+import { useSeoClient, useSeoRead, useSeoRefresh } from "./seo-api";
 import { displayableEnvelope, type SeoStackParamList } from "./seo-state";
-import { SeoFreshnessBanner } from "./SeoUi";
+import { SeoFreshnessBanner, SeoSyncNote } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 /**
@@ -18,13 +18,15 @@ export function SeoLogScreen() {
   const navigation = useNavigation<NavigationProp<SeoStackParamList>>();
   const client = useSeoClient();
   const { selectedSiteId } = useSeoSitePreference();
-  const [refreshing, setRefreshing] = useState(false);
 
   const fetcher = useMemo(
     () => (client && selectedSiteId ? () => client.log(selectedSiteId) : null),
     [client, selectedSiteId],
   );
   const { read, reload } = useSeoRead(selectedSiteId ? `log:${selectedSiteId}` : null, fetcher);
+  // Pull to refresh reads live and asks Ranksta to look at Search Console
+  // again. It resolves on the read, never on the sync.
+  const refresh = useSeoRefresh(client, selectedSiteId, reload);
   const envelope = displayableEnvelope(read);
 
   if (!client || !selectedSiteId) {
@@ -45,16 +47,11 @@ export function SeoLogScreen() {
       className="flex-1 bg-screen"
       contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
       refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            void reload().finally(() => setRefreshing(false));
-          }}
-        />
+        <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
       }
     >
       <SeoFreshnessBanner read={read} />
+      <SeoSyncNote notice={refresh.notice} />
       {envelope ? (
         <>
           <SectionTitle>{`Log · ${envelope.data.actions.length} entries`}</SectionTitle>

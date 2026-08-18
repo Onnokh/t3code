@@ -10,7 +10,7 @@ import {
   useAutomationNotificationOffer,
 } from "../notifications/automationNotifications";
 import { automationsCacheKeys, useAutomationsClient } from "./automations-api";
-import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
+import { useDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
   describeRunState,
   formatByteLength,
@@ -54,16 +54,15 @@ export function AutomationRunDetailScreen({ route }: StaticScreenProps<Params>) 
   // The Run itself hydrates; the log does not. A log is followed by cursor
   // from wherever this screen starts, so replaying a cached prefix would
   // either duplicate lines or hide the ones written since.
-  const [run, setRun] = useState<AutomationRun | null>(() =>
-    readDevskiCacheEntry<AutomationRun>(automationsCacheKeys.run(runId)),
-  );
+  const cachedRun = useDevskiCacheEntry<AutomationRun>(automationsCacheKeys.run(runId));
+  const [loadedRun, setLoadedRun] = useState<AutomationRun | null>(null);
+  const run = loadedRun ?? cachedRun?.value ?? null;
   const [error, setError] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [log, setLog] = useState<LogFollow>(EMPTY_LOG);
-  const [artifacts, setArtifacts] = useState<readonly ArtifactSummary[]>(
-    () => readDevskiCacheEntry<AutomationRun>(automationsCacheKeys.run(runId))?.artifacts ?? [],
-  );
+  const [loadedArtifacts, setArtifacts] = useState<readonly ArtifactSummary[] | null>(null);
+  const artifacts = loadedArtifacts ?? cachedRun?.value.artifacts ?? [];
   const [stopping, setStopping] = useState(false);
   const stopKey = useRef<string | null>(null);
   const logBusy = useRef(false);
@@ -74,7 +73,7 @@ export function AutomationRunDetailScreen({ route }: StaticScreenProps<Params>) 
     const result = await client.getRun(runId);
     if (result.kind === "ok") {
       writeDevskiCacheEntry(automationsCacheKeys.run(runId), result.value);
-      setRun(result.value);
+      setLoadedRun(result.value);
       setError(null);
       if (result.value.artifacts) setArtifacts(result.value.artifacts);
     } else {
@@ -170,7 +169,7 @@ export function AutomationRunDetailScreen({ route }: StaticScreenProps<Params>) 
     const result = await client.cancelRun(runId, stopKey.current);
     setStopping(false);
     if (result.kind === "ok") {
-      setRun(result.value.run);
+      setLoadedRun(result.value.run);
       void loadRun();
       return;
     }

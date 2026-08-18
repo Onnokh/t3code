@@ -1,7 +1,13 @@
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../../components/AppText";
-import { describeFreshness, displayState, displayableEnvelope, type SeoRead } from "./seo-state";
+import {
+  describeFreshness,
+  displayState,
+  displayableEnvelope,
+  type SeoRead,
+  type SeoSyncNotice,
+} from "./seo-state";
 
 /**
  * Deliberately plain shared pieces for the SEO Area. PLO-416 ships a
@@ -11,9 +17,10 @@ import { describeFreshness, displayState, displayableEnvelope, type SeoRead } fr
  */
 
 /**
- * The visible data state every SEO screen shows: current, stale (Gateway-
- * marked or retained after a failed revalidation), or unavailable. Renders
- * nothing while loading with nothing to say.
+ * The visible data state every SEO screen shows: current, unconfirmed (drawn
+ * from what this device stored at an earlier launch), stale (Gateway-marked
+ * or retained after a failed revalidation), or unavailable. Renders nothing
+ * while loading with nothing to say.
  */
 export function SeoFreshnessBanner(props: {
   readonly read: SeoRead<unknown>;
@@ -39,12 +46,21 @@ export function SeoFreshnessBanner(props: {
   return (
     <View className="rounded-2xl border border-border bg-card px-4 py-3">
       <Text className="text-sm font-t3-bold text-foreground">
-        {state === "stale" ? "Stale data" : "Current"}
+        {state === "stale"
+          ? "Stale data"
+          : state === "unconfirmed"
+            ? "Not confirmed yet"
+            : "Current"}
         {` · ${envelope.site.label}`}
       </Text>
       <Text className="mt-0.5 text-xs text-foreground-muted">
         {describeFreshness(envelope.freshness)}
       </Text>
+      {state === "unconfirmed" ? (
+        <Text className="mt-0.5 text-xs text-foreground-muted">
+          Saved on this device by an earlier read. A live read is on its way.
+        </Text>
+      ) : null}
       {state === "stale" && props.read.kind === "unavailable" ? (
         <Text className="mt-0.5 text-xs text-foreground-muted">
           Showing the last successful read; the latest refresh failed.
@@ -61,6 +77,13 @@ export function SeoFreshnessBanner(props: {
  */
 export function SeoStaleNote(props: { readonly read: SeoRead<unknown> }) {
   const state = displayState(props.read);
+  if (state === "unconfirmed") {
+    return (
+      <Text className="text-xs text-foreground-muted">
+        Saved on this device by an earlier read. A live read is on its way.
+      </Text>
+    );
+  }
   if (state !== "stale" && state !== "unavailable") return null;
   if (state === "unavailable") {
     return (
@@ -76,6 +99,21 @@ export function SeoStaleNote(props: { readonly read: SeoRead<unknown> }) {
       {retained ? "Last successful read · " : ""}
       {envelope ? describeFreshness(envelope.freshness) : "Stale data"}
     </Text>
+  );
+}
+
+/**
+ * What became of the sync the last pull to refresh asked for. Deliberately
+ * the same quiet note for all three accepted outcomes and for a refused
+ * request: none of them means the data on the screen is wrong, and a red
+ * banner over a screen that is working correctly would say it does.
+ */
+export function SeoSyncNote(props: { readonly notice: SeoSyncNotice | null }) {
+  if (props.notice === null) return null;
+  return (
+    <View className="rounded-2xl border border-border bg-card px-4 py-3">
+      <Text className="text-xs text-foreground-muted">{props.notice.message}</Text>
+    </View>
   );
 }
 

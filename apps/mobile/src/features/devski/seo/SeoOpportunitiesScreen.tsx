@@ -5,7 +5,7 @@ import { useNavigation, type NavigationProp } from "@react-navigation/native";
 import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
 import { ChoiceRow, ListRow, SectionTitle } from "../automations/AutomationsUi";
-import { useSeoClient, useSeoRead } from "./seo-api";
+import { useSeoClient, useSeoRead, useSeoRefresh } from "./seo-api";
 import {
   displayableEnvelope,
   formatDateRange,
@@ -13,7 +13,7 @@ import {
   type SeoSignal,
   type SeoStackParamList,
 } from "./seo-state";
-import { SeoFreshnessBanner } from "./SeoUi";
+import { SeoFreshnessBanner, SeoSyncNote } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 /** Ranksta's four opportunity kinds; classification stays server-side. */
@@ -55,7 +55,6 @@ export function SeoOpportunitiesScreen() {
   const client = useSeoClient();
   const { selectedSiteId } = useSeoSitePreference();
   const [kind, setKind] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
 
   const fetcher = useMemo(
     () =>
@@ -68,6 +67,9 @@ export function SeoOpportunitiesScreen() {
     selectedSiteId ? `opportunities:${selectedSiteId}:${kind ?? "all"}` : null,
     fetcher,
   );
+  // Pull to refresh reads live and asks Ranksta to look at Search Console
+  // again. It resolves on the read, never on the sync.
+  const refresh = useSeoRefresh(client, selectedSiteId, reload);
   const envelope = displayableEnvelope(read);
 
   if (!client || !selectedSiteId) {
@@ -88,16 +90,11 @@ export function SeoOpportunitiesScreen() {
       className="flex-1 bg-screen"
       contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
       refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            void reload().finally(() => setRefreshing(false));
-          }}
-        />
+        <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
       }
     >
       <SeoFreshnessBanner read={read} />
+      <SeoSyncNote notice={refresh.notice} />
       <SectionTitle>Kind</SectionTitle>
       {KIND_FILTERS.map((filter) => (
         <ChoiceRow
