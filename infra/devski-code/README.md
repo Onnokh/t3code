@@ -124,9 +124,51 @@ Coolify configuration for the private OpenCode 2 sidecar:
 - persistent volumes: `/data/opencode` (interactive OpenCode state) and the
   SAME `/workspaces/code` volume as the T3 container;
 - environment: `OPENCODE_SERVER_PASSWORD` (Coolify secret) — the server's
-  Basic-auth password;
+  Basic-auth password; `EXECUTOR_MCP_TOKEN` (Coolify secret) — the bearer for
+  the Executor MCP (see Skills and MCP servers below). The T3 application takes
+  the same value;
 - health check: authenticated `GET /api/health` on port `4096` (built into
   the image).
+
+## Skills and MCP servers
+
+`infra/devski-code/agent-tools.json` is this service's one declaration of what
+an agent can reach: the skill directories, and the MCP servers that front every
+external integration. Both runtimes read that one file, by different routes,
+because their configuration models differ:
+
+| Runtime                         | How it gets the declaration                                                                                                                                 |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenCode 2 sidecar              | `render-opencode-config.mjs` turns it into `/etc/devski/opencode.json` at **build** time; `OPENCODE_CONFIG` names that file                                 |
+| Claude runtime (T3 environment) | `entrypoint.sh` applies it at **boot**: it links `$CLAUDE_CONFIG_DIR/skills` at the installed library and declares each MCP server into Claude's user scope |
+
+Claude Code needs the boot route because `CLAUDE_CONFIG_DIR` is a volume, and a
+mount masks whatever the image put below it. That application is not a one-way
+seed like the settings above it: the declaration wins on every boot, in both
+directions. Remove a server from the file, or start without its credential, and
+the previous boot's entry is removed rather than left behind.
+
+Two consequences worth knowing:
+
+- Claude stores the **resolved** bearer in `.claude.json` on the volume, unlike
+  OpenCode's `{env:...}`, which is resolved when the config is read. Rotating
+  the token therefore takes a container restart, and the volume holds a copy of
+  it until then.
+- `EXECUTOR_MCP_TOKEN` absent is a working container with no `executor` server,
+  and the boot log says which server was skipped and that its credential was
+  absent from the environment.
+
+The library itself is installed with the `skills` CLI (`skills add
+Onnokh/skills --agent universal`), the command the library's README gives.
+`universal` is the CLI's agent-neutral target, so all three Digital Home
+runtimes resolve the same `/opt/agent-skills/.agents/skills`. Only the CLI is
+pinned: `skills add` takes no git ref, so the library follows its default branch
+at build time and `.agents/.skill-lock.json` records what landed.
+
+The Digital Home Harness holds the matching declaration for its own image — its
+build context excludes this repository, so it cannot read this file — and
+`tests/local-stack.test.ts` in `Onnokh/digital-home` fails when the two
+disagree.
 
 ## Connect T3 to the sidecar
 

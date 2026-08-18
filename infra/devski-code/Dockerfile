@@ -112,6 +112,30 @@ ENV TZ=Europe/Amsterdam \
 #   docker exec <container> node infra/devski-code/claude-runtime-smoke.mjs
 COPY infra/devski-code/claude-runtime-smoke.mjs ./infra/devski-code/claude-runtime-smoke.mjs
 
+# The one declaration of what an agent in this service can reach: the skill
+# library installed below, and the MCP servers that front every external
+# integration. The OpenCode 2 sidecar renders its own config from this same
+# file, so the service has one answer and not one per runtime.
+#
+# Claude Code reads its user scope from CLAUDE_CONFIG_DIR, which is a volume a
+# mount masks, so the image cannot write it. entrypoint.sh applies this file at
+# boot instead — every boot, so the image stays the source of truth.
+COPY infra/devski-code/agent-tools.json /etc/devski/agent-tools.json
+
+# The public skill library, installed with the `skills` CLI: the command the
+# library's README gives, and the same install the sidecar and the Digital Home
+# Harness run, so all three runtimes know the same skills.
+#
+# HOME picks the target — the CLI writes $HOME/.agents/skills — and it stays in
+# /opt for the same reason as the file above. entrypoint.sh links Claude's
+# skills directory at it. Only the CLI is pinned: `skills add` takes no git ref,
+# so the library resolves to its default branch at build time and
+# .agents/.skill-lock.json records what landed.
+ARG SKILLS_CLI_VERSION=1.5.22
+RUN HOME=/opt/agent-skills npx --yes skills@${SKILLS_CLI_VERSION} \
+      add Onnokh/skills --agent universal --skill '*' --copy --global --yes \
+ && test -d /opt/agent-skills/.agents/skills
+
 # /data/t3: T3 sessions, config, and project metadata (owner: T3 only).
 # /data/claude: Claude Max login and Agent SDK state (owner: T3 only).
 # /workspaces/code: the Code Workspace Root, shared with interactive

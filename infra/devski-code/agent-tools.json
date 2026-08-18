@@ -1,0 +1,14 @@
+{
+  "$comment": "The one declaration of what an agent in the devski-code service can reach. Both runtimes read it: the Claude runtime in the T3 environment, seeded into its user scope by entrypoint.sh because Claude Code's config dir is a volume the image cannot write; and the interactive OpenCode 2 sidecar, whose opencode.json is rendered from this file at build time. The Digital Home Harness holds the matching declaration for its own image — its build context excludes this repository, so it cannot read this file — and tests/local-stack.test.ts in Onnokh/digital-home fails when the two disagree.",
+  "skills": ["/opt/agent-skills/.agents/skills"],
+  "mcpServers": {
+    "executor": {
+      "type": "http",
+      "url": "https://executor.onkie.dev/mcp",
+      "headers": { "Authorization": "Bearer {env:EXECUTOR_MCP_TOKEN}" }
+    }
+  },
+  "opencode": {
+    "disabled_providers": ["gitlab"]
+  }
+}
