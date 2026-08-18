@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import * as NodeFS from "node:fs";
 
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 vi.mock("@expo/ui/swift-ui", () => ({
@@ -54,6 +55,7 @@ function makeDeps(overrides: Partial<AutomationNotificationDeps> = {}): Automati
   return {
     wasOffered: async () => false,
     markOffered: async () => undefined,
+    permissionStatus: async () => "undetermined",
     requestPermission: async () => "granted",
     readPushToken: async () => "apns-token-1",
     register: async () => true,
@@ -92,6 +94,35 @@ describe("offerAutomationNotifications", () => {
     expect(requestPermission).not.toHaveBeenCalled();
   });
 
+  it("registers a device that was offered notifications but holds no token", async () => {
+    // The reported defect: this install had been asked once, never got a
+    // token, and the marker foreclosed every later attempt. Permission is
+    // already granted here, so reaching a registered state costs no dialog
+    // and the marker has nothing to protect.
+    const requestPermission = vi.fn(async () => "granted" as const);
+    const markOffered = vi.fn(async () => undefined);
+    const outcome = await offerAutomationNotifications(
+      makeDeps({
+        wasOffered: async () => true,
+        permissionStatus: async () => "granted",
+        requestPermission,
+        markOffered,
+      }),
+    );
+    expect(outcome).toBe("registered");
+    expect(requestPermission).not.toHaveBeenCalled();
+    expect(markOffered).not.toHaveBeenCalled();
+  });
+
+  it("leaves a denied permission to iOS Settings instead of re-asking", async () => {
+    const requestPermission = vi.fn(async () => "granted" as const);
+    const outcome = await offerAutomationNotifications(
+      makeDeps({ permissionStatus: async () => "denied", requestPermission }),
+    );
+    expect(outcome).toBe("permission_denied");
+    expect(requestPermission).not.toHaveBeenCalled();
+  });
+
   it("records the offer before prompting so a crash cannot re-prompt", async () => {
     const order: string[] = [];
     await offerAutomationNotifications(
@@ -122,6 +153,23 @@ describe("offerAutomationNotifications", () => {
       makeDeps({ readPushToken: async () => null }),
     );
     expect(outcome).toBe("unavailable");
+  });
+});
+
+describe("the card's lifetime", () => {
+  it("is never decided here: the app does not end a card it did not create", () => {
+    // One card per device carries rows from the Harness, the API and MCP
+    // alike, and this device can only see the Automation ones. An app-side
+    // end therefore dismissed other producers' work; the Gateway now sends
+    // a real end with a dismissal date, so the app reports tokens and
+    // nothing more. Asserted against the source because the regression is
+    // the *presence* of an ActivityKit end anywhere in this module, under
+    // whatever name it is reintroduced.
+    const source = NodeFS.readFileSync(
+      new URL("./automationNotifications.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).not.toMatch(/\.end\(/);
   });
 });
 
