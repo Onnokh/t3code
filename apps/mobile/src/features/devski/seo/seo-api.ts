@@ -228,6 +228,16 @@ export function useSeoRead<T>(
  * per screen. That is the deliberate cost: the alternative is a data date on the
  * home screen alone, and a refresh happens on all seven.
  */
+/**
+ * How long after asking for a sync to look once more for the check instant.
+ *
+ * Long enough for Ranksta to finish a run that fetches a few days, short enough
+ * that the line settles while the owner is still looking at the screen. A single
+ * delay rather than a poll: if the sync takes longer than this, the next pull
+ * shows it, which is a better failure than four speculative round-trips.
+ */
+const CHECK_SETTLE_MS = 4_000;
+
 export function useSeoRefresh(
   client: SeoClient | null,
   site: string | null,
@@ -260,19 +270,36 @@ export function useSeoRefresh(
 
   const refresh = useCallback(() => {
     const ticket = ++generation.current;
+    const mine = () => generation.current === ticket;
     setRefreshing(true);
+
+    // Deliberately unawaited and unreported: the sync is a request about the
+    // future, and the client answers rather than rejects, so this catch only
+    // guards the refresh against a defect breaking the read.
+    if (client && site !== null) void client.sync(site).catch(() => undefined);
+
     // The status read runs alongside the screen's data rather than after it, so
     // the data date lands with everything else the gesture shows.
     void Promise.all([readRef.current(), status.reload()])
       .catch(() => undefined)
       .finally(() => {
-        if (generation.current === ticket) setRefreshing(false);
+        if (!mine()) return;
+        setRefreshing(false);
+
+        // Ranksta answers the sync with `202` and asks Google behind it, so the
+        // read above necessarily saw the *previous* check. Without this, the
+        // first pull after a real sync reports the check before it and only the
+        // next pull tells the truth.
+        //
+        // One re-read, not a loop, and only for the check: `checkedAt` is stamped
+        // when the run completes, which is seconds away. The data date is not
+        // chased, because it moves only when Google actually had new days —
+        // waiting on that would wait out a six-hour reconciliation floor and
+        // always give up.
+        setTimeout(() => {
+          if (mine()) void status.reload().catch(() => undefined);
+        }, CHECK_SETTLE_MS);
       });
-    if (!client || site === null) return;
-    // Deliberately unawaited and unreported: the sync is a request about the
-    // future, and the client answers rather than rejects, so this catch only
-    // guards the refresh against a defect breaking the read.
-    void client.sync(site).catch(() => undefined);
   }, [client, site, status.reload]);
 
   return {
