@@ -6,10 +6,12 @@
  * phases, and index state are displayed as returned and never recomputed on
  * the phone. Unknown future enum values stay display-safe strings.
  *
- * The contract has one operation, the Site sync, and this module classifies
- * its answer too. Every accepted sync request is a success, a cooldown
- * included; see `describeSyncRequest`.
+ * The contract has one operation, the Site sync, and this module reads its
+ * answer too. It does not turn that answer into words: see
+ * `readSyncRequested`.
  */
+
+import { relativeTime } from "../../../lib/time";
 
 export type SeoSite = {
   readonly id: string;
@@ -330,21 +332,24 @@ export function readEnvelope<T>(body: unknown): SeoEnvelope<T> | null {
 }
 
 /**
- * What became of a sync request. `started` and `already-running` both mean
- * Ranksta is going to look at Search Console; `cooling-down` means the
- * Gateway's five-minute floor for this Site refused to spend the quota
- * again yet. The Gateway answers all three with 202, so none of them is an
- * error.
+ * What became of a sync request. Both states mean the same thing to this app
+ * — Ranksta is going to look at Search Console — and the Gateway answers
+ * both with 202, so neither is an error and neither is worth distinct
+ * wording. `already-running` is Ranksta's own per-Site lock answering, which
+ * is not a refusal.
+ *
+ * The Gateway used to answer a third state, `cooling-down`, behind a
+ * five-minute floor per Site, together with `retryAfterSeconds`. Both are
+ * gone from the contract: a pull to refresh that reports a cooldown instead
+ * of fetching is a refresh gesture that does not refresh.
  */
-export type SeoSyncState = "started" | "already-running" | "cooling-down";
+export type SeoSyncState = "started" | "already-running";
 
 export type SeoSyncRequested = {
   readonly site: { readonly id: string; readonly label: string; readonly url: string };
   readonly sync: {
     readonly state: SeoSyncState;
     readonly requestedAt: string;
-    /** A number only for `cooling-down`. */
-    readonly retryAfterSeconds: number | null;
   };
   readonly requestId: string;
 };
@@ -353,19 +358,13 @@ export type SeoSyncRequested = {
 export function readSyncRequested(body: unknown): SeoSyncRequested | null {
   const candidate = body as {
     site?: { id?: unknown };
-    sync?: { state?: unknown; requestedAt?: unknown; retryAfterSeconds?: unknown };
+    sync?: { state?: unknown; requestedAt?: unknown };
   } | null;
   if (!candidate || typeof candidate !== "object") return null;
   if (!candidate.site || typeof candidate.site.id !== "string") return null;
   const sync = candidate.sync;
   if (!sync || typeof sync !== "object") return null;
-  if (
-    sync.state !== "started" &&
-    sync.state !== "already-running" &&
-    sync.state !== "cooling-down"
-  ) {
-    return null;
-  }
+  if (sync.state !== "started" && sync.state !== "already-running") return null;
   if (typeof sync.requestedAt !== "string") return null;
   return candidate as SeoSyncRequested;
 }
@@ -572,14 +571,42 @@ export function formatDateRange(start: string | null, end: string | null): strin
   return `${start} – ${end}`;
 }
 
-/** The freshness line every SEO screen shows near its data. */
-export function describeFreshness(freshness: SeoFreshness): string {
-  const synced = freshness.syncedAt ? `Synced ${freshness.syncedAt}` : "Sync time unknown";
+/**
+ * What the payload on screen covers, and whether it came from the Gateway's
+ * outage fallback.
+ *
+ * The synced time used to be part of this line and is not any more. The
+ * Gateway populates `syncedAt` on the `status` read alone, so on every other
+ * read this line said "Sync time unknown" — which is true of the payload and
+ * useless beside a synced time the screen now reads separately and knows.
+ */
+export function describeCoverage(freshness: SeoFreshness): string {
   const range =
     freshness.rangeStart && freshness.rangeEnd
-      ? ` · data ${freshness.rangeStart} – ${freshness.rangeEnd}`
-      : "";
-  return freshness.stale ? `STALE · ${synced}${range}` : `${synced}${range}`;
+      ? `Data ${freshness.rangeStart} – ${freshness.rangeEnd}`
+      : "Data window unknown";
+  return freshness.stale ? `STALE · ${range}` : range;
+}
+
+/**
+ * When this Site's Search Console data last arrived, as the `status` read
+ * reports it.
+ *
+ * `null` is said to be unknown rather than shown as a moment: the Gateway
+ * sends `null` when it did not ask, and "Last synced <1m ago" over data from
+ * last week is the one thing this line must never say. An instant nobody can
+ * parse is unknown for the same reason — `relativeTime` answers "<1m" for
+ * anything it cannot read, which would be exactly that invented moment.
+ *
+ * This is the age of the data and nothing else. It is not `stale`, which says
+ * which side of an outage the payload came from, and not `unconfirmed`, which
+ * says the value came off this device and no read has confirmed it yet.
+ */
+export function describeSyncedAt(syncedAt: string | null): string {
+  if (syncedAt === null || Number.isNaN(Date.parse(syncedAt))) {
+    return "Last sync time unknown";
+  }
+  return `Last synced ${relativeTime(syncedAt)} ago`;
 }
 
 /** Index state with its inspection date when Ranksta supplied one. */
@@ -609,54 +636,4 @@ export function summarizeSeoError(result: SeoResult<unknown>): string {
   }
   if (result.kind === "error") return result.error.message;
   return "The request failed.";
-}
-
-/** "4 minutes", for the cooldown the Gateway reports in seconds. */
-export function formatRetryAfter(seconds: number): string {
-  const whole = Math.max(1, Math.ceil(seconds));
-  if (whole < 60) return whole === 1 ? "1 second" : `${whole} seconds`;
-  const minutes = Math.ceil(whole / 60);
-  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
-}
-
-/**
- * What pull to refresh says about the sync it asked for.
- *
- * Refresh means "read live now, and ask Ranksta to look at Search Console
- * again". It does not mean "get newer data": Search Console lags by days, a
- * sync outlives the gesture by minutes, and the Gateway answers for the
- * request rather than the result. So every tone here is informational —
- * `requested` for a sync that is happening, `waiting` for the per-Site
- * cooldown, and `failed` only for a request the Gateway did not accept,
- * which leaves the live read the screen already shows untouched.
- */
-export type SeoSyncNotice = {
-  readonly tone: "requested" | "waiting" | "failed";
-  readonly message: string;
-};
-
-export function describeSyncRequest(result: SeoResult<SeoSyncRequested>): SeoSyncNotice {
-  if (result.kind === "ok") {
-    const { state, retryAfterSeconds } = result.value.sync;
-    if (state === "cooling-down") {
-      return {
-        tone: "waiting",
-        message:
-          retryAfterSeconds === null
-            ? "This Site synced recently, so Ranksta did not ask Google again. Pull to refresh later."
-            : `This Site synced recently, so Ranksta did not ask Google again. Pull to refresh in ${formatRetryAfter(retryAfterSeconds)}.`,
-      };
-    }
-    return {
-      tone: "requested",
-      message:
-        state === "already-running"
-          ? "A sync is already running for this Site. Search Console lags by days, so new data can appear on a later refresh."
-          : "Sync requested. Search Console lags by days, so a sync often changes nothing, and new data can appear on a later refresh.",
-    };
-  }
-  return {
-    tone: "failed",
-    message: `The data above is a live read. Ranksta was not asked to sync: ${summarizeSeoError(result)}`,
-  };
 }

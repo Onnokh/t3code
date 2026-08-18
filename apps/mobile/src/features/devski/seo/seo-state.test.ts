@@ -2,14 +2,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applySeoResult,
-  describeFreshness,
-  describeSyncRequest,
+  describeCoverage,
   describeIndexState,
+  describeSyncedAt,
   displayState,
   displayableEnvelope,
   formatCtr,
   formatMetrics,
-  formatRetryAfter,
   formatWindow,
   indexCoverage,
   interpretSeoResponse,
@@ -22,6 +21,7 @@ import {
   trueTotalsFromHistory,
   verdictSummary,
   type SeoEnvelope,
+  type SeoFreshness,
   type SeoHistoryData,
   type SeoPageRow,
   type SeoRead,
@@ -278,12 +278,9 @@ describe("applySeoResult and displayState", () => {
 });
 
 describe("the sync operation", () => {
-  const requested = (
-    state: string,
-    retryAfterSeconds: number | null = null,
-  ): Record<string, unknown> => ({
+  const requested = (state: string): Record<string, unknown> => ({
     site: { id: "sleevy", label: "Sleevy", url: "https://sleevy.app" },
-    sync: { state, requestedAt: "2026-08-18T09:00:00.000Z", retryAfterSeconds },
+    sync: { state, requestedAt: "2026-08-18T09:00:00.000Z" },
     requestId: "req-2",
   });
 
@@ -297,77 +294,43 @@ describe("the sync operation", () => {
     expect(readSyncRequested(requested("finished"))).toBeNull();
   });
 
+  it("refuses the cooldown state the contract no longer has", () => {
+    expect(readSyncRequested(requested("cooling-down"))).toBeNull();
+  });
+
   it("refuses a body without a sync block", () => {
     expect(readSyncRequested({ site: { id: "sleevy" }, requestId: "req-2" })).toBeNull();
   });
 
-  it("treats every 202 as a success, cooldown included", () => {
-    for (const state of ["started", "already-running", "cooling-down"]) {
+  it("treats both accepted states as a success", () => {
+    for (const state of ["started", "already-running"]) {
       const result = interpretSeoResponse(
-        {
-          kind: "response",
-          status: 202,
-          body: requested(state, state === "cooling-down" ? 240 : null),
-        },
+        { kind: "response", status: 202, body: requested(state) },
         readSyncRequested,
       );
       expect(result.kind).toBe("ok");
-      expect(describeSyncRequest(result).tone).not.toBe("failed");
     }
   });
 
-  it("says a sync was requested, and that new data comes later", () => {
-    const notice = describeSyncRequest({
-      kind: "ok",
-      value: readSyncRequested(requested("started"))!,
-    });
-    expect(notice.tone).toBe("requested");
-    expect(notice.message).toContain("later refresh");
+  it("leaves a refused sync request an error the refresh can ignore", () => {
+    const result = interpretSeoResponse(
+      {
+        kind: "response",
+        status: 503,
+        body: { code: "unavailable", message: "The SEO service is temporarily unavailable." },
+      },
+      readSyncRequested,
+    );
+    expect(result.kind).toBe("error");
   });
 
-  it("treats a sync that is already running as a request that landed", () => {
-    const notice = describeSyncRequest({
-      kind: "ok",
-      value: readSyncRequested(requested("already-running"))!,
-    });
-    expect(notice.tone).toBe("requested");
-    expect(notice.message).toContain("already running");
-  });
-
-  it("says when the cooldown allows another request rather than only refusing", () => {
-    const notice = describeSyncRequest({
-      kind: "ok",
-      value: readSyncRequested(requested("cooling-down", 240))!,
-    });
-    expect(notice.tone).toBe("waiting");
-    expect(notice.message).toContain("4 minutes");
-  });
-
-  it("falls back to no time when the cooldown reports none", () => {
-    const notice = describeSyncRequest({
-      kind: "ok",
-      value: readSyncRequested(requested("cooling-down"))!,
-    });
-    expect(notice.tone).toBe("waiting");
-    expect(notice.message).toContain("later");
-  });
-
-  it("keeps a refused request away from the reads it did not touch", () => {
-    const notice = describeSyncRequest({
-      kind: "error",
-      error: { code: "not_found", message: "That Site is not configured." },
-    });
-    expect(notice.tone).toBe("failed");
-    expect(notice.message).toContain("live read");
-    expect(notice.message).toContain("That Site is not configured.");
-  });
-
-  it("rounds the cooldown up to whole units", () => {
-    expect(formatRetryAfter(1)).toBe("1 second");
-    expect(formatRetryAfter(45)).toBe("45 seconds");
-    expect(formatRetryAfter(60)).toBe("1 minute");
-    expect(formatRetryAfter(61)).toBe("2 minutes");
-    expect(formatRetryAfter(300)).toBe("5 minutes");
+  it("has no sync-state wording left to render", async () => {
+    // A refresh reports itself by the synced time it shows, so removing the
+    // wording is the behaviour and its absence is what there is to pin. This
+    // fails the moment a describe-the-request helper comes back.
+    const exported = Object.keys(await import("./seo-state"));
+    expect(exported).not.toContain("describeSyncRequest");
+    expect(exported).not.toContain("formatRetryAfter");
   });
 });
 
@@ -437,17 +400,50 @@ describe("formatting", () => {
     expect(describeIndexState("future-state", null)).toBe("future-state");
   });
 
-  it("marks stale freshness visibly and shows the data range", () => {
+  it("marks stale coverage visibly and shows the data range", () => {
     expect(
-      describeFreshness({
+      describeCoverage({
         syncedAt: "2026-08-15T05:00:00.000Z",
         rangeStart: "2026-08-01",
         rangeEnd: "2026-08-14",
         stale: false,
       }),
-    ).toBe("Synced 2026-08-15T05:00:00.000Z · data 2026-08-01 – 2026-08-14");
+    ).toBe("Data 2026-08-01 – 2026-08-14");
     expect(
-      describeFreshness({ syncedAt: null, rangeStart: null, rangeEnd: null, stale: true }),
-    ).toBe("STALE · Sync time unknown");
+      describeCoverage({ syncedAt: null, rangeStart: null, rangeEnd: null, stale: true }),
+    ).toBe("STALE · Data window unknown");
+  });
+});
+
+describe("the last synced time", () => {
+  const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+
+  it("shows how long ago the status read says the data arrived", () => {
+    expect(describeSyncedAt(hoursAgo(3))).toBe("Last synced 3h ago");
+    expect(describeSyncedAt(hoursAgo(50))).toBe("Last synced 2d ago");
+  });
+
+  it("reads the synced time off an envelope whether or not the payload is stale", () => {
+    const synced = (stale: boolean): SeoFreshness => ({
+      ...envelope(historyData, stale).freshness,
+      syncedAt: hoursAgo(1),
+    });
+    // A stale payload came from the Gateway's outage fallback and still
+    // carries the synced time it remembered; staleness is not the data's age.
+    expect(describeSyncedAt(synced(true).syncedAt)).toBe("Last synced 1h ago");
+    expect(describeSyncedAt(synced(false).syncedAt)).toBe("Last synced 1h ago");
+  });
+
+  it("never invents a time for a read that reports none", () => {
+    // Every read but `status` answers null, and null means the Gateway did not
+    // ask — not that the data arrived just now.
+    const plain: SeoFreshness = { ...envelope(historyData).freshness, syncedAt: null };
+    expect(describeSyncedAt(plain.syncedAt)).toBe("Last sync time unknown");
+    expect(describeSyncedAt(null)).toBe("Last sync time unknown");
+  });
+
+  it("treats an unreadable instant as unknown rather than as this minute", () => {
+    expect(describeSyncedAt("not an instant")).toBe("Last sync time unknown");
+    expect(describeSyncedAt("")).toBe("Last sync time unknown");
   });
 });

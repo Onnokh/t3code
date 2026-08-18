@@ -6,7 +6,7 @@ import { useDevskiConnection } from "../devski-read-cache-store";
 import { useDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
   applySeoResult,
-  describeSyncRequest,
+  displayableEnvelope,
   interpretSeoResponse,
   readEnvelope,
   readSites,
@@ -23,7 +23,6 @@ import {
   type SeoResult,
   type SeoSite,
   type SeoStatusData,
-  type SeoSyncNotice,
   type SeoSyncRequested,
 } from "./seo-state";
 
@@ -212,9 +211,16 @@ export function useSeoRead<T>(
  * The gesture resolves on the read. A Search Console sync takes minutes and
  * outlives the gesture, so a spinner tied to it would look broken, and a
  * sync request that fails never fails the refresh — the read is what the
- * owner sees, the sync is a request about the future. What became of the
- * request is reported in `notice`, which is informational for every outcome
- * the Gateway accepts, a cooldown included.
+ * owner sees, the sync is a request about the future. Nothing is said about
+ * what became of that request: both states the Gateway accepts mean the same
+ * thing, and a refused one leaves the live read on screen untouched, so a
+ * sentence about it would explain a screen that is already correct.
+ *
+ * What the gesture does show for itself is `syncedAt` — when this Site's
+ * Search Console data last arrived. It comes from the `status` read because
+ * that is the only read the Gateway populates it on, which makes it a second
+ * request per screen. That is the deliberate cost: the alternative is a synced
+ * time on the home screen alone, and a refresh happens on all seven.
  */
 export function useSeoRefresh(
   client: SeoClient | null,
@@ -223,44 +229,52 @@ export function useSeoRefresh(
 ): {
   readonly refreshing: boolean;
   readonly refresh: () => void;
-  readonly notice: SeoSyncNotice | null;
+  readonly syncedAt: string | null;
 } {
+  const statusFetcher = useMemo(
+    () => (client && site ? () => client.status(site) : null),
+    [client, site],
+  );
+  // The same hook and key discipline every screen's own read uses, so the
+  // synced time is drawn from this device at launch, replaced by the read that
+  // follows it, retained when a read fails, and never shown for another Site.
+  const status = useSeoRead(site ? `status:${site}` : null, statusFetcher);
   const [refreshing, setRefreshing] = useState(false);
-  const [notice, setNotice] = useState<SeoSyncNotice | null>(null);
   const readRef = useRef(read);
   readRef.current = read;
   const generation = useRef(0);
 
-  // A notice is about the Site it was requested for, and nothing else. The
-  // gesture is abandoned with it, so the spinner stops rather than waiting on
-  // an answer this screen no longer accepts.
+  // A gesture belongs to the Site it was made on. Switching Site abandons it,
+  // so the spinner stops rather than waiting on an answer this screen no
+  // longer accepts.
   useEffect(() => {
     generation.current += 1;
-    setNotice(null);
     setRefreshing(false);
   }, [site]);
 
   const refresh = useCallback(() => {
     const ticket = ++generation.current;
-    setNotice(null);
     setRefreshing(true);
-    void readRef
-      .current()
+    // The synced time is read alongside the screen's data rather than after
+    // it, so the one visible outcome of the gesture lands with everything else.
+    void Promise.all([readRef.current(), status.reload()])
       .catch(() => undefined)
       .finally(() => {
         if (generation.current === ticket) setRefreshing(false);
       });
     if (!client || site === null) return;
-    void client
-      .sync(site)
-      .then((result) => {
-        if (generation.current !== ticket) return;
-        setNotice(describeSyncRequest(result));
-      })
-      // The client answers rather than rejects, so this only guards the
-      // refresh against a defect: a broken sync must not break the read.
-      .catch(() => undefined);
-  }, [client, site]);
+    // Deliberately unawaited and unreported: the sync is a request about the
+    // future, and the client answers rather than rejects, so this catch only
+    // guards the refresh against a defect breaking the read.
+    void client.sync(site).catch(() => undefined);
+  }, [client, site, status.reload]);
 
-  return { refreshing, refresh, notice };
+  return {
+    refreshing,
+    refresh,
+    // Whatever the status read can show, what it retained through a failure
+    // included: the last synced time this device knows of is still a fact
+    // about the data, where a null would claim nothing ever synced.
+    syncedAt: displayableEnvelope(status.read)?.freshness.syncedAt ?? null,
+  };
 }

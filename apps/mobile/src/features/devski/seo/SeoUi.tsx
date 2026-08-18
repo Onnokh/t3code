@@ -2,11 +2,11 @@ import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../../components/AppText";
 import {
-  describeFreshness,
+  describeCoverage,
+  describeSyncedAt,
   displayState,
   displayableEnvelope,
   type SeoRead,
-  type SeoSyncNotice,
 } from "./seo-state";
 
 /**
@@ -54,7 +54,7 @@ export function SeoFreshnessBanner(props: {
         {` · ${envelope.site.label}`}
       </Text>
       <Text className="mt-0.5 text-xs text-foreground-muted">
-        {describeFreshness(envelope.freshness)}
+        {describeCoverage(envelope.freshness)}
       </Text>
       {state === "unconfirmed" ? (
         <Text className="mt-0.5 text-xs text-foreground-muted">
@@ -97,24 +97,24 @@ export function SeoStaleNote(props: { readonly read: SeoRead<unknown> }) {
   return (
     <Text className="text-xs text-foreground-muted">
       {retained ? "Last successful read · " : ""}
-      {envelope ? describeFreshness(envelope.freshness) : "Stale data"}
+      {envelope ? describeCoverage(envelope.freshness) : "Stale data"}
     </Text>
   );
 }
 
 /**
- * What became of the sync the last pull to refresh asked for. Deliberately
- * the same quiet note for all three accepted outcomes and for a refused
- * request: none of them means the data on the screen is wrong, and a red
- * banner over a screen that is working correctly would say it does.
+ * When this Site's Search Console data last arrived, which is what a pull to
+ * refresh has to show for itself.
+ *
+ * Always rendered, an unknown time included: a line that disappears leaves a
+ * gap where a time belongs, and a gap reads as "nothing has ever synced" when
+ * the Gateway only meant it did not ask. It sits apart from the freshness
+ * banner on purpose — that banner is about which read produced the payload,
+ * this is about how old the data behind it is, and one is regularly true while
+ * the other is not.
  */
-export function SeoSyncNote(props: { readonly notice: SeoSyncNotice | null }) {
-  if (props.notice === null) return null;
-  return (
-    <View className="rounded-2xl border border-border bg-card px-4 py-3">
-      <Text className="text-xs text-foreground-muted">{props.notice.message}</Text>
-    </View>
-  );
+export function SeoSyncedTime(props: { readonly syncedAt: string | null }) {
+  return <Text className="text-xs text-foreground-muted">{describeSyncedAt(props.syncedAt)}</Text>;
 }
 
 /** A section title beside the link to the screen that holds all of it. */

@@ -7,7 +7,7 @@ import { EmptyState } from "../../../components/EmptyState";
 import { ListRow, SectionTitle } from "../automations/AutomationsUi";
 import { useSeoClient, useSeoRead, useSeoRefresh } from "./seo-api";
 import { displayableEnvelope, type SeoStackParamList } from "./seo-state";
-import { SeoFreshnessBanner, SeoSyncNote } from "./SeoUi";
+import { SeoFreshnessBanner, SeoSyncedTime } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 /**
@@ -50,8 +50,8 @@ export function SeoLogScreen() {
         <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
       }
     >
+      <SeoSyncedTime syncedAt={refresh.syncedAt} />
       <SeoFreshnessBanner read={read} />
-      <SeoSyncNote notice={refresh.notice} />
       {envelope ? (
         <>
           <SectionTitle>{`Log · ${envelope.data.actions.length} entries`}</SectionTitle>

@@ -13,7 +13,7 @@ import {
   type SeoSignal,
   type SeoStackParamList,
 } from "./seo-state";
-import { SeoFreshnessBanner, SeoSyncNote } from "./SeoUi";
+import { SeoFreshnessBanner, SeoSyncedTime } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 /** Ranksta's four opportunity kinds; classification stays server-side. */
@@ -93,8 +93,8 @@ export function SeoOpportunitiesScreen() {
         <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
       }
     >
+      <SeoSyncedTime syncedAt={refresh.syncedAt} />
       <SeoFreshnessBanner read={read} />
-      <SeoSyncNote notice={refresh.notice} />
       <SectionTitle>Kind</SectionTitle>
       {KIND_FILTERS.map((filter) => (
         <ChoiceRow
