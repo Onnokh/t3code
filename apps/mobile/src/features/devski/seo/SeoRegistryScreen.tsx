@@ -13,7 +13,7 @@ import {
   type SeoRegistryTarget,
   type SeoStackParamList,
 } from "./seo-state";
-import { SeoFreshnessBanner, SeoSyncNote } from "./SeoUi";
+import { SeoFreshnessBanner } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 function targetLines(target: SeoRegistryTarget): string[] {
@@ -80,7 +80,6 @@ export function SeoRegistryScreen() {
       }
     >
       <SeoFreshnessBanner read={read} />
-      <SeoSyncNote notice={refresh.notice} />
       {envelope ? (
         <>
           <SectionTitle>{`Targets · ${envelope.data.targets.length}`}</SectionTitle>

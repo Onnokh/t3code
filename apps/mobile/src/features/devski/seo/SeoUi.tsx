@@ -1,13 +1,7 @@
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../../components/AppText";
-import {
-  describeFreshness,
-  displayState,
-  displayableEnvelope,
-  type SeoRead,
-  type SeoSyncNotice,
-} from "./seo-state";
+import { describeFreshness, displayState, displayableEnvelope, type SeoRead } from "./seo-state";
 
 /**
  * Deliberately plain shared pieces for the SEO Area. PLO-416 ships a
@@ -99,21 +93,6 @@ export function SeoStaleNote(props: { readonly read: SeoRead<unknown> }) {
       {retained ? "Last successful read · " : ""}
       {envelope ? describeFreshness(envelope.freshness) : "Stale data"}
     </Text>
-  );
-}
-
-/**
- * What became of the sync the last pull to refresh asked for. Deliberately
- * the same quiet note for all three accepted outcomes and for a refused
- * request: none of them means the data on the screen is wrong, and a red
- * banner over a screen that is working correctly would say it does.
- */
-export function SeoSyncNote(props: { readonly notice: SeoSyncNotice | null }) {
-  if (props.notice === null) return null;
-  return (
-    <View className="rounded-2xl border border-border bg-card px-4 py-3">
-      <Text className="text-xs text-foreground-muted">{props.notice.message}</Text>
-    </View>
   );
 }
 

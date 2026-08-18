@@ -6,7 +6,7 @@ import { EmptyState } from "../../../components/EmptyState";
 import { FieldRow, SectionTitle } from "../automations/AutomationsUi";
 import { useSeoClient, useSeoRead, useSeoRefresh } from "./seo-api";
 import { displayableEnvelope, formatCount, formatCtr, formatPosition } from "./seo-state";
-import { SeoFreshnessBanner, SeoSyncNote } from "./SeoUi";
+import { SeoFreshnessBanner } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 const HISTORY_DAYS = 56;
@@ -54,7 +54,6 @@ export function SeoHistoryScreen() {
       }
     >
       <SeoFreshnessBanner read={read} />
-      <SeoSyncNote notice={refresh.notice} />
       {envelope ? (
         <>
           <SectionTitle>{`Daily true totals · last ${HISTORY_DAYS} days`}</SectionTitle>

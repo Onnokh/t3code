@@ -6,7 +6,6 @@ import { useDevskiConnection } from "../devski-read-cache-store";
 import { useDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
   applySeoResult,
-  describeSyncRequest,
   interpretSeoResponse,
   readEnvelope,
   readSites,
@@ -23,7 +22,6 @@ import {
   type SeoResult,
   type SeoSite,
   type SeoStatusData,
-  type SeoSyncNotice,
   type SeoSyncRequested,
 } from "./seo-state";
 
@@ -212,9 +210,10 @@ export function useSeoRead<T>(
  * The gesture resolves on the read. A Search Console sync takes minutes and
  * outlives the gesture, so a spinner tied to it would look broken, and a
  * sync request that fails never fails the refresh — the read is what the
- * owner sees, the sync is a request about the future. What became of the
- * request is reported in `notice`, which is informational for every outcome
- * the Gateway accepts, a cooldown included.
+ * owner sees, the sync is a request about the future. Nothing is said about
+ * what became of that request: both states the Gateway accepts mean the same
+ * thing, and a refused one leaves the live read on screen untouched, so a
+ * sentence about it would explain a screen that is already correct.
  */
 export function useSeoRefresh(
   client: SeoClient | null,
@@ -223,26 +222,22 @@ export function useSeoRefresh(
 ): {
   readonly refreshing: boolean;
   readonly refresh: () => void;
-  readonly notice: SeoSyncNotice | null;
 } {
   const [refreshing, setRefreshing] = useState(false);
-  const [notice, setNotice] = useState<SeoSyncNotice | null>(null);
   const readRef = useRef(read);
   readRef.current = read;
   const generation = useRef(0);
 
-  // A notice is about the Site it was requested for, and nothing else. The
-  // gesture is abandoned with it, so the spinner stops rather than waiting on
-  // an answer this screen no longer accepts.
+  // A gesture belongs to the Site it was made on. Switching Site abandons it,
+  // so the spinner stops rather than waiting on an answer this screen no
+  // longer accepts.
   useEffect(() => {
     generation.current += 1;
-    setNotice(null);
     setRefreshing(false);
   }, [site]);
 
   const refresh = useCallback(() => {
     const ticket = ++generation.current;
-    setNotice(null);
     setRefreshing(true);
     void readRef
       .current()
@@ -251,16 +246,11 @@ export function useSeoRefresh(
         if (generation.current === ticket) setRefreshing(false);
       });
     if (!client || site === null) return;
-    void client
-      .sync(site)
-      .then((result) => {
-        if (generation.current !== ticket) return;
-        setNotice(describeSyncRequest(result));
-      })
-      // The client answers rather than rejects, so this only guards the
-      // refresh against a defect: a broken sync must not break the read.
-      .catch(() => undefined);
+    // Deliberately unawaited and unreported: the sync is a request about the
+    // future, and the client answers rather than rejects, so this catch only
+    // guards the refresh against a defect breaking the read.
+    void client.sync(site).catch(() => undefined);
   }, [client, site]);
 
-  return { refreshing, refresh, notice };
+  return { refreshing, refresh };
 }

@@ -30,7 +30,7 @@ import {
   type SeoStackParamList,
 } from "./seo-state";
 import { SeoDailyChart } from "./SeoDailyChart";
-import { SeoSectionHeader, SeoStaleNote, SeoSyncNote } from "./SeoUi";
+import { SeoSectionHeader, SeoStaleNote } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 type SitesState =
@@ -290,7 +290,6 @@ export function SeoHomeScreen() {
               <Text className="mt-0.5 text-base text-foreground-muted">{selectedSite.url}</Text>
             </View>
             <SeoStaleNote read={history.read} />
-            <SeoSyncNote notice={refresh.notice} />
             <SeoDailyChart days={days} loading={history.read.kind === "loading"} />
 
             <SeoSectionHeader
