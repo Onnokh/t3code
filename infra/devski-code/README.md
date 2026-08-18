@@ -137,9 +137,9 @@ an agent can reach: the skill directories, and the MCP servers that front every
 external integration. Both runtimes read that one file, by different routes,
 because their configuration models differ:
 
-| Runtime | How it gets the declaration |
-| --- | --- |
-| OpenCode 2 sidecar | `render-opencode-config.mjs` turns it into `/etc/devski/opencode.json` at **build** time; `OPENCODE_CONFIG` names that file |
+| Runtime                         | How it gets the declaration                                                                                                                                 |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenCode 2 sidecar              | `render-opencode-config.mjs` turns it into `/etc/devski/opencode.json` at **build** time; `OPENCODE_CONFIG` names that file                                 |
 | Claude runtime (T3 environment) | `entrypoint.sh` applies it at **boot**: it links `$CLAUDE_CONFIG_DIR/skills` at the installed library and declares each MCP server into Claude's user scope |
 
 Claude Code needs the boot route because `CLAUDE_CONFIG_DIR` is a volume, and a
@@ -155,8 +155,8 @@ Two consequences worth knowing:
   the token therefore takes a container restart, and the volume holds a copy of
   it until then.
 - `EXECUTOR_MCP_TOKEN` absent is a working container with no `executor` server,
-  and the boot log says so: `mcp executor not declared: its credential is absent
-  from the environment`.
+  and the boot log says which server was skipped and that its credential was
+  absent from the environment.
 
 The library itself is installed with the `skills` CLI (`skills add
 Onnokh/skills --agent universal`), the command the library's README gives.
