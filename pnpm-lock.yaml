@@ -370,7 +370,7 @@ importers:
         specifier: ~56.0.5
         version: 56.0.5(expo@56.0.12)(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.16)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
       expo-widgets:
-        specifier: ~56.0.19
+        specifier: 56.0.19
         version: 56.0.19(patch_hash=378d2bb3d5adde891927a6cab87f306af0447a6f5fa24fe2c45c7a7e0923bff2)(3cdc0dde9f93166d952f1e1bd0cb25c0)
       punycode:
         specifier: ^2.3.1
