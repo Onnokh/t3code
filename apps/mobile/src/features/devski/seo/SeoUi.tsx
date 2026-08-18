@@ -1,7 +1,13 @@
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../../components/AppText";
-import { describeFreshness, displayState, displayableEnvelope, type SeoRead } from "./seo-state";
+import {
+  describeCoverage,
+  describeSyncedAt,
+  displayState,
+  displayableEnvelope,
+  type SeoRead,
+} from "./seo-state";
 
 /**
  * Deliberately plain shared pieces for the SEO Area. PLO-416 ships a
@@ -48,7 +54,7 @@ export function SeoFreshnessBanner(props: {
         {` · ${envelope.site.label}`}
       </Text>
       <Text className="mt-0.5 text-xs text-foreground-muted">
-        {describeFreshness(envelope.freshness)}
+        {describeCoverage(envelope.freshness)}
       </Text>
       {state === "unconfirmed" ? (
         <Text className="mt-0.5 text-xs text-foreground-muted">
@@ -91,9 +97,24 @@ export function SeoStaleNote(props: { readonly read: SeoRead<unknown> }) {
   return (
     <Text className="text-xs text-foreground-muted">
       {retained ? "Last successful read · " : ""}
-      {envelope ? describeFreshness(envelope.freshness) : "Stale data"}
+      {envelope ? describeCoverage(envelope.freshness) : "Stale data"}
     </Text>
   );
+}
+
+/**
+ * When this Site's Search Console data last arrived, which is what a pull to
+ * refresh has to show for itself.
+ *
+ * Always rendered, an unknown time included: a line that disappears leaves a
+ * gap where a time belongs, and a gap reads as "nothing has ever synced" when
+ * the Gateway only meant it did not ask. It sits apart from the freshness
+ * banner on purpose — that banner is about which read produced the payload,
+ * this is about how old the data behind it is, and one is regularly true while
+ * the other is not.
+ */
+export function SeoSyncedTime(props: { readonly syncedAt: string | null }) {
+  return <Text className="text-xs text-foreground-muted">{describeSyncedAt(props.syncedAt)}</Text>;
 }
 
 /** A section title beside the link to the screen that holds all of it. */

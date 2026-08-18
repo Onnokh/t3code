@@ -14,7 +14,7 @@ import {
   type SeoQueryRow,
   type SeoStackParamList,
 } from "./seo-state";
-import { SeoFreshnessBanner } from "./SeoUi";
+import { SeoFreshnessBanner, SeoSyncedTime } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 const QUERY_LIMIT = 100;
@@ -83,6 +83,7 @@ export function SeoQueriesScreen() {
         <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
       }
     >
+      <SeoSyncedTime syncedAt={refresh.syncedAt} />
       <SeoFreshnessBanner read={read} />
       <Text className="text-xs text-foreground-muted">{PARTIAL_VISIBILITY_NOTE}</Text>
       <SectionTitle>Brand</SectionTitle>

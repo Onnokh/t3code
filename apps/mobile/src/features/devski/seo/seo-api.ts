@@ -6,6 +6,7 @@ import { useDevskiConnection } from "../devski-read-cache-store";
 import { useDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
   applySeoResult,
+  displayableEnvelope,
   interpretSeoResponse,
   readEnvelope,
   readSites,
@@ -214,6 +215,12 @@ export function useSeoRead<T>(
  * what became of that request: both states the Gateway accepts mean the same
  * thing, and a refused one leaves the live read on screen untouched, so a
  * sentence about it would explain a screen that is already correct.
+ *
+ * What the gesture does show for itself is `syncedAt` — when this Site's
+ * Search Console data last arrived. It comes from the `status` read because
+ * that is the only read the Gateway populates it on, which makes it a second
+ * request per screen. That is the deliberate cost: the alternative is a synced
+ * time on the home screen alone, and a refresh happens on all seven.
  */
 export function useSeoRefresh(
   client: SeoClient | null,
@@ -222,7 +229,16 @@ export function useSeoRefresh(
 ): {
   readonly refreshing: boolean;
   readonly refresh: () => void;
+  readonly syncedAt: string | null;
 } {
+  const statusFetcher = useMemo(
+    () => (client && site ? () => client.status(site) : null),
+    [client, site],
+  );
+  // The same hook and key discipline every screen's own read uses, so the
+  // synced time is drawn from this device at launch, replaced by the read that
+  // follows it, retained when a read fails, and never shown for another Site.
+  const status = useSeoRead(site ? `status:${site}` : null, statusFetcher);
   const [refreshing, setRefreshing] = useState(false);
   const readRef = useRef(read);
   readRef.current = read;
@@ -239,8 +255,9 @@ export function useSeoRefresh(
   const refresh = useCallback(() => {
     const ticket = ++generation.current;
     setRefreshing(true);
-    void readRef
-      .current()
+    // The synced time is read alongside the screen's data rather than after
+    // it, so the one visible outcome of the gesture lands with everything else.
+    void Promise.all([readRef.current(), status.reload()])
       .catch(() => undefined)
       .finally(() => {
         if (generation.current === ticket) setRefreshing(false);
@@ -250,7 +267,14 @@ export function useSeoRefresh(
     // future, and the client answers rather than rejects, so this catch only
     // guards the refresh against a defect breaking the read.
     void client.sync(site).catch(() => undefined);
-  }, [client, site]);
+  }, [client, site, status.reload]);
 
-  return { refreshing, refresh };
+  return {
+    refreshing,
+    refresh,
+    // Whatever the status read can show, what it retained through a failure
+    // included: the last synced time this device knows of is still a fact
+    // about the data, where a null would claim nothing ever synced.
+    syncedAt: displayableEnvelope(status.read)?.freshness.syncedAt ?? null,
+  };
 }

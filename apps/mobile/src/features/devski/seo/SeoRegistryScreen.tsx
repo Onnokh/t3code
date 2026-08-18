@@ -13,7 +13,7 @@ import {
   type SeoRegistryTarget,
   type SeoStackParamList,
 } from "./seo-state";
-import { SeoFreshnessBanner } from "./SeoUi";
+import { SeoFreshnessBanner, SeoSyncedTime } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 function targetLines(target: SeoRegistryTarget): string[] {
@@ -79,6 +79,7 @@ export function SeoRegistryScreen() {
         <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
       }
     >
+      <SeoSyncedTime syncedAt={refresh.syncedAt} />
       <SeoFreshnessBanner read={read} />
       {envelope ? (
         <>

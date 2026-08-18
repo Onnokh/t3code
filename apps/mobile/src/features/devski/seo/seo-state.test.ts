@@ -2,8 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applySeoResult,
-  describeFreshness,
+  describeCoverage,
   describeIndexState,
+  describeSyncedAt,
   displayState,
   displayableEnvelope,
   formatCtr,
@@ -20,6 +21,7 @@ import {
   trueTotalsFromHistory,
   verdictSummary,
   type SeoEnvelope,
+  type SeoFreshness,
   type SeoHistoryData,
   type SeoPageRow,
   type SeoRead,
@@ -398,17 +400,50 @@ describe("formatting", () => {
     expect(describeIndexState("future-state", null)).toBe("future-state");
   });
 
-  it("marks stale freshness visibly and shows the data range", () => {
+  it("marks stale coverage visibly and shows the data range", () => {
     expect(
-      describeFreshness({
+      describeCoverage({
         syncedAt: "2026-08-15T05:00:00.000Z",
         rangeStart: "2026-08-01",
         rangeEnd: "2026-08-14",
         stale: false,
       }),
-    ).toBe("Synced 2026-08-15T05:00:00.000Z · data 2026-08-01 – 2026-08-14");
+    ).toBe("Data 2026-08-01 – 2026-08-14");
     expect(
-      describeFreshness({ syncedAt: null, rangeStart: null, rangeEnd: null, stale: true }),
-    ).toBe("STALE · Sync time unknown");
+      describeCoverage({ syncedAt: null, rangeStart: null, rangeEnd: null, stale: true }),
+    ).toBe("STALE · Data window unknown");
+  });
+});
+
+describe("the last synced time", () => {
+  const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+
+  it("shows how long ago the status read says the data arrived", () => {
+    expect(describeSyncedAt(hoursAgo(3))).toBe("Last synced 3h ago");
+    expect(describeSyncedAt(hoursAgo(50))).toBe("Last synced 2d ago");
+  });
+
+  it("reads the synced time off an envelope whether or not the payload is stale", () => {
+    const synced = (stale: boolean): SeoFreshness => ({
+      ...envelope(historyData, stale).freshness,
+      syncedAt: hoursAgo(1),
+    });
+    // A stale payload came from the Gateway's outage fallback and still
+    // carries the synced time it remembered; staleness is not the data's age.
+    expect(describeSyncedAt(synced(true).syncedAt)).toBe("Last synced 1h ago");
+    expect(describeSyncedAt(synced(false).syncedAt)).toBe("Last synced 1h ago");
+  });
+
+  it("never invents a time for a read that reports none", () => {
+    // Every read but `status` answers null, and null means the Gateway did not
+    // ask — not that the data arrived just now.
+    const plain: SeoFreshness = { ...envelope(historyData).freshness, syncedAt: null };
+    expect(describeSyncedAt(plain.syncedAt)).toBe("Last sync time unknown");
+    expect(describeSyncedAt(null)).toBe("Last sync time unknown");
+  });
+
+  it("treats an unreadable instant as unknown rather than as this minute", () => {
+    expect(describeSyncedAt("not an instant")).toBe("Last sync time unknown");
+    expect(describeSyncedAt("")).toBe("Last sync time unknown");
   });
 });

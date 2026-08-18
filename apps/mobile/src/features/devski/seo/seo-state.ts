@@ -11,6 +11,8 @@
  * `readSyncRequested`.
  */
 
+import { relativeTime } from "../../../lib/time";
+
 export type SeoSite = {
   readonly id: string;
   readonly label: string;
@@ -569,14 +571,42 @@ export function formatDateRange(start: string | null, end: string | null): strin
   return `${start} – ${end}`;
 }
 
-/** The freshness line every SEO screen shows near its data. */
-export function describeFreshness(freshness: SeoFreshness): string {
-  const synced = freshness.syncedAt ? `Synced ${freshness.syncedAt}` : "Sync time unknown";
+/**
+ * What the payload on screen covers, and whether it came from the Gateway's
+ * outage fallback.
+ *
+ * The synced time used to be part of this line and is not any more. The
+ * Gateway populates `syncedAt` on the `status` read alone, so on every other
+ * read this line said "Sync time unknown" — which is true of the payload and
+ * useless beside a synced time the screen now reads separately and knows.
+ */
+export function describeCoverage(freshness: SeoFreshness): string {
   const range =
     freshness.rangeStart && freshness.rangeEnd
-      ? ` · data ${freshness.rangeStart} – ${freshness.rangeEnd}`
-      : "";
-  return freshness.stale ? `STALE · ${synced}${range}` : `${synced}${range}`;
+      ? `Data ${freshness.rangeStart} – ${freshness.rangeEnd}`
+      : "Data window unknown";
+  return freshness.stale ? `STALE · ${range}` : range;
+}
+
+/**
+ * When this Site's Search Console data last arrived, as the `status` read
+ * reports it.
+ *
+ * `null` is said to be unknown rather than shown as a moment: the Gateway
+ * sends `null` when it did not ask, and "Last synced <1m ago" over data from
+ * last week is the one thing this line must never say. An instant nobody can
+ * parse is unknown for the same reason — `relativeTime` answers "<1m" for
+ * anything it cannot read, which would be exactly that invented moment.
+ *
+ * This is the age of the data and nothing else. It is not `stale`, which says
+ * which side of an outage the payload came from, and not `unconfirmed`, which
+ * says the value came off this device and no read has confirmed it yet.
+ */
+export function describeSyncedAt(syncedAt: string | null): string {
+  if (syncedAt === null || Number.isNaN(Date.parse(syncedAt))) {
+    return "Last sync time unknown";
+  }
+  return `Last synced ${relativeTime(syncedAt)} ago`;
 }
 
 /** Index state with its inspection date when Ranksta supplied one. */
