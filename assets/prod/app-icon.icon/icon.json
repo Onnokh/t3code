@@ -6,12 +6,18 @@
     {
       "layers": [
         {
-          "image-name": "text.svg",
-          "name": "Text",
+          "glass": true,
+          "hidden": false,
+          "image-name": "devski-glyph.png",
+          "name": "devski-glyph",
           "position": {
-            "scale": 8.5,
-            "translation-in-points": [0, 0]
+            "scale": 0.61,
+            "translation-in-points": [24.40200845410004, -10.674999999999955]
           }
+        },
+        {
+          "image-name": "devski-backdrop.png",
+          "name": "devski-backdrop"
         }
       ],
       "shadow": {
