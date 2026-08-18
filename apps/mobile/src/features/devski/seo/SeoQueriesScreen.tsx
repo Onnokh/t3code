@@ -83,7 +83,7 @@ export function SeoQueriesScreen() {
         <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
       }
     >
-      <SeoSyncedTime syncedAt={refresh.syncedAt} />
+      <SeoSyncedTime syncedAt={refresh.syncedAt} sync={refresh.sync} />
       <SeoFreshnessBanner read={read} />
       <Text className="text-xs text-foreground-muted">{PARTIAL_VISIBILITY_NOTE}</Text>
       <SectionTitle>Brand</SectionTitle>

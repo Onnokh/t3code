@@ -3,10 +3,12 @@ import { Pressable, View } from "react-native";
 import { AppText as Text } from "../../../components/AppText";
 import {
   describeCoverage,
+  describeSyncOutcome,
   describeSyncedAt,
   displayState,
   displayableEnvelope,
   type SeoRead,
+  type SeoSyncOutcome,
 } from "./seo-state";
 
 /**
@@ -103,18 +105,34 @@ export function SeoStaleNote(props: { readonly read: SeoRead<unknown> }) {
 }
 
 /**
- * When this Site's Search Console data last arrived, which is what a pull to
- * refresh has to show for itself.
+ * When this Site's Search Console data last arrived, and what this device's
+ * last sync request came to.
  *
- * Always rendered, an unknown time included: a line that disappears leaves a
- * gap where a time belongs, and a gap reads as "nothing has ever synced" when
- * the Gateway only meant it did not ask. It sits apart from the freshness
- * banner on purpose — that banner is about which read produced the payload,
- * this is about how old the data behind it is, and one is regularly true while
- * the other is not.
+ * Two facts, one line, because apart they invite exactly the wrong reading.
+ * The arrival time moves only when Ranksta fetches a day it had not fetched
+ * recently, so it holds still through a refresh that worked perfectly; on its
+ * own it looks like a dead gesture. The request's outcome is what says the
+ * gesture landed — and, when the Gateway refused, that it did not.
+ *
+ * The time is always rendered, an unknown one included: a line that disappears
+ * leaves a gap where a time belongs, and a gap reads as "nothing has ever
+ * synced" when the Gateway only meant it did not ask. The outcome is appended
+ * only once there is one, since before the first pull there is nothing to
+ * report. Both sit apart from the freshness banner on purpose — that banner is
+ * about which read produced the payload, these are about the data behind it and
+ * the gesture that asked for more.
  */
-export function SeoSyncedTime(props: { readonly syncedAt: string | null }) {
-  return <Text className="text-xs text-foreground-muted">{describeSyncedAt(props.syncedAt)}</Text>;
+export function SeoSyncedTime(props: {
+  readonly syncedAt: string | null;
+  readonly sync?: SeoSyncOutcome;
+}) {
+  const outcome = props.sync ? describeSyncOutcome(props.sync) : null;
+  return (
+    <Text className="text-xs text-foreground-muted">
+      {describeSyncedAt(props.syncedAt)}
+      {outcome === null ? "" : ` · ${outcome}`}
+    </Text>
+  );
 }
 
 /** A section title beside the link to the screen that holds all of it. */

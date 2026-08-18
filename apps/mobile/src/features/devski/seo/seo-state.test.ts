@@ -4,6 +4,7 @@ import {
   applySeoResult,
   describeCoverage,
   describeIndexState,
+  describeSyncOutcome,
   describeSyncedAt,
   displayState,
   displayableEnvelope,
@@ -445,5 +446,51 @@ describe("the last synced time", () => {
   it("treats an unreadable instant as unknown rather than as this minute", () => {
     expect(describeSyncedAt("not an instant")).toBe("Last sync time unknown");
     expect(describeSyncedAt("")).toBe("Last sync time unknown");
+  });
+});
+
+describe("what a sync request came to", () => {
+  it("says nothing before this device has asked for one", () => {
+    // A screen that has not been pulled has no gesture to report, and a
+    // sentence about a sync nobody asked for is noise.
+    expect(describeSyncOutcome({ kind: "none" })).toBeNull();
+  });
+
+  it("reports an accepted sync the same way whichever lock Ranksta took", () => {
+    // The Gateway answers 202 for both, and which one it was tells the owner
+    // nothing they can act on: Ranksta is going to look at Search Console.
+    expect(describeSyncOutcome({ kind: "requested", state: "started" })).toBe("Sync requested");
+    expect(describeSyncOutcome({ kind: "requested", state: "already-running" })).toBe(
+      "Sync requested",
+    );
+  });
+
+  it("makes a refused sync visible, and says why", () => {
+    // The property this whole type exists for. A refused sync used to be
+    // dropped on the floor, which left the screen identical to a successful
+    // refresh — no error, no banner, nothing.
+    expect(
+      describeSyncOutcome({ kind: "refused", message: "The SEO service is unreachable." }),
+    ).toBe("Sync failed: The SEO service is unreachable.");
+  });
+
+  it("tells an accepted sync apart from a refused one even though neither moves the synced time", () => {
+    // The bug this pins. Ranksta re-fetches a finalized day only once its
+    // cached copy has aged past the reconciliation floor, so for hours after a
+    // real sync every further sync correctly fetches nothing and stamps no new
+    // arrival instant. The synced time is therefore identical in both cases,
+    // and the outcome line is the only thing that separates "asked, and there
+    // was nothing new" from "never asked successfully at all".
+    const unmoved = "2026-08-18T12:21:54Z";
+    const accepted = describeSyncOutcome({ kind: "requested", state: "started" });
+    const refused = describeSyncOutcome({
+      kind: "refused",
+      message: "The SEO service is temporarily unavailable.",
+    });
+
+    expect(describeSyncedAt(unmoved)).toBe(describeSyncedAt(unmoved));
+    expect(accepted).not.toBe(refused);
+    expect(accepted).not.toBeNull();
+    expect(refused).not.toBeNull();
   });
 });

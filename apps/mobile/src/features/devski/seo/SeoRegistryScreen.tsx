@@ -79,7 +79,7 @@ export function SeoRegistryScreen() {
         <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
       }
     >
-      <SeoSyncedTime syncedAt={refresh.syncedAt} />
+      <SeoSyncedTime syncedAt={refresh.syncedAt} sync={refresh.sync} />
       <SeoFreshnessBanner read={read} />
       {envelope ? (
         <>

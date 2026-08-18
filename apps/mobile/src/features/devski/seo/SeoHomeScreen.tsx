@@ -289,7 +289,7 @@ export function SeoHomeScreen() {
               <Text className="font-t3-bold text-3xl text-foreground">{selectedSite.label}</Text>
               <Text className="mt-0.5 text-base text-foreground-muted">{selectedSite.url}</Text>
             </View>
-            <SeoSyncedTime syncedAt={refresh.syncedAt} />
+            <SeoSyncedTime syncedAt={refresh.syncedAt} sync={refresh.sync} />
             <SeoStaleNote read={history.read} />
             <SeoDailyChart days={days} loading={history.read.kind === "loading"} />
 

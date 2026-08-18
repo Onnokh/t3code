@@ -69,7 +69,7 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
       <Text className="font-t3-bold text-foreground" selectable>
         {path}
       </Text>
-      <SeoSyncedTime syncedAt={refresh.syncedAt} />
+      <SeoSyncedTime syncedAt={refresh.syncedAt} sync={refresh.sync} />
       <SeoFreshnessBanner read={read} />
       {page ? (
         <>

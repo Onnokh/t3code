@@ -11,6 +11,7 @@ import {
   readEnvelope,
   readSites,
   readSyncRequested,
+  summarizeSeoError,
   type SeoEnvelope,
   type SeoHistoryData,
   type SeoLogData,
@@ -23,6 +24,7 @@ import {
   type SeoResult,
   type SeoSite,
   type SeoStatusData,
+  type SeoSyncOutcome,
   type SeoSyncRequested,
 } from "./seo-state";
 
@@ -209,18 +211,25 @@ export function useSeoRead<T>(
  * Search Console again.
  *
  * The gesture resolves on the read. A Search Console sync takes minutes and
- * outlives the gesture, so a spinner tied to it would look broken, and a
- * sync request that fails never fails the refresh — the read is what the
- * owner sees, the sync is a request about the future. Nothing is said about
- * what became of that request: both states the Gateway accepts mean the same
- * thing, and a refused one leaves the live read on screen untouched, so a
- * sentence about it would explain a screen that is already correct.
+ * outlives the gesture, so a spinner tied to it would look broken, and a sync
+ * request that fails never fails the refresh — the read is what the owner
+ * sees, the sync is a request about the future.
  *
- * What the gesture does show for itself is `syncedAt` — when this Site's
- * Search Console data last arrived. It comes from the `status` read because
- * that is the only read the Gateway populates it on, which makes it a second
- * request per screen. That is the deliberate cost: the alternative is a synced
- * time on the home screen alone, and a refresh happens on all seven.
+ * What became of that request *is* reported, as `sync`. It used to be dropped,
+ * on the reasoning that a refused sync leaves a correct live read on screen and
+ * so needs no sentence. That reasoning holds for the read and fails for the
+ * gesture. The only other thing the gesture shows is `syncedAt`, and Ranksta
+ * moves that solely for days it actually fetched — a sync inside its
+ * reconciliation floor fetches none and moves nothing. So "accepted, and
+ * nothing new to fetch" and "refused, nothing happened" rendered the same
+ * unchanged screen, for hours, and the owner had no way to tell them apart.
+ * One request, one reported answer.
+ *
+ * `syncedAt` — when this Site's Search Console data last arrived — comes from
+ * the `status` read because that is the only read the Gateway populates it on,
+ * which makes it a second request per screen. That is the deliberate cost: the
+ * alternative is a synced time on the home screen alone, and a refresh happens
+ * on all seven.
  */
 export function useSeoRefresh(
   client: SeoClient | null,
@@ -230,6 +239,7 @@ export function useSeoRefresh(
   readonly refreshing: boolean;
   readonly refresh: () => void;
   readonly syncedAt: string | null;
+  readonly sync: SeoSyncOutcome;
 } {
   const statusFetcher = useMemo(
     () => (client && site ? () => client.status(site) : null),
@@ -240,33 +250,68 @@ export function useSeoRefresh(
   // follows it, retained when a read fails, and never shown for another Site.
   const status = useSeoRead(site ? `status:${site}` : null, statusFetcher);
   const [refreshing, setRefreshing] = useState(false);
+  const [sync, setSync] = useState<SeoSyncOutcome>({ kind: "none" });
   const readRef = useRef(read);
   readRef.current = read;
   const generation = useRef(0);
 
   // A gesture belongs to the Site it was made on. Switching Site abandons it,
   // so the spinner stops rather than waiting on an answer this screen no
-  // longer accepts.
+  // longer accepts. The sync outcome goes with it: it was an answer about the
+  // Site that was on screen, and it would misread as this one's.
   useEffect(() => {
     generation.current += 1;
     setRefreshing(false);
+    setSync({ kind: "none" });
   }, [site]);
 
   const refresh = useCallback(() => {
     const ticket = ++generation.current;
+    const mine = () => generation.current === ticket;
     setRefreshing(true);
-    // The synced time is read alongside the screen's data rather than after
-    // it, so the one visible outcome of the gesture lands with everything else.
-    void Promise.all([readRef.current(), status.reload()])
-      .catch(() => undefined)
+
+    // The sync goes out alongside the reads, not before or after them. Ordering
+    // buys nothing here — Ranksta answers 202 and fetches behind it, so no read
+    // this gesture makes can see the sync's effect whichever way round they go —
+    // and running them together keeps the gesture as short as the reads.
+    //
+    // `null` means this gesture asked for no sync at all, which is not the same
+    // as one that was refused. The client answers rather than rejects, so the
+    // catch guards only against a defect, and it reports a refusal: from the
+    // gesture's side an answer that never came is a sync that did not happen.
+    const requested: Promise<SeoResult<SeoSyncRequested> | null> =
+      client && site !== null
+        ? client.sync(site).catch(
+            (): SeoResult<SeoSyncRequested> => ({
+              kind: "error",
+              error: { code: "unavailable", message: "The SEO service is unreachable." },
+            }),
+          )
+        : Promise.resolve(null);
+
+    void Promise.all([
+      readRef.current().catch(() => undefined),
+      status.reload().catch(() => undefined),
+      requested,
+    ])
+      .then(([, , result]) => {
+        if (!mine()) return;
+        if (result === null) {
+          // Unpaired, or no Site selected — which the screen's own read already
+          // says. Claiming a sync failed would invent a failure out of a
+          // gesture that asked for nothing.
+          setSync({ kind: "none" });
+          return;
+        }
+        setSync(
+          result.kind === "ok"
+            ? { kind: "requested", state: result.value.sync.state }
+            : { kind: "refused", message: summarizeSeoError(result) },
+        );
+      })
       .finally(() => {
-        if (generation.current === ticket) setRefreshing(false);
+        if (mine()) setRefreshing(false);
       });
-    if (!client || site === null) return;
-    // Deliberately unawaited and unreported: the sync is a request about the
-    // future, and the client answers rather than rejects, so this catch only
-    // guards the refresh against a defect breaking the read.
-    void client.sync(site).catch(() => undefined);
   }, [client, site, status.reload]);
 
   return {
@@ -276,5 +321,6 @@ export function useSeoRefresh(
     // included: the last synced time this device knows of is still a fact
     // about the data, where a null would claim nothing ever synced.
     syncedAt: displayableEnvelope(status.read)?.freshness.syncedAt ?? null,
+    sync,
   };
 }

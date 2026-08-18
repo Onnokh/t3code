@@ -354,6 +354,48 @@ export type SeoSyncRequested = {
   readonly requestId: string;
 };
 
+/**
+ * What this device's last sync request came to, as the refresh gesture saw it.
+ *
+ * This is a fact about the *request*, not about the data. It exists because
+ * the synced time cannot answer for the gesture: Ranksta re-fetches a
+ * finalized day only when its cached copy has aged past a reconciliation
+ * floor, so a sync that runs and correctly finds nothing to fetch writes no
+ * new arrival instant. For the length of that floor — hours — every refresh
+ * leaves "Last synced" exactly where it was. Reading that as "the refresh did
+ * nothing" is the mistake this type exists to stop, and a refused sync looked
+ * identical to an accepted one until it was reported here.
+ */
+export type SeoSyncOutcome =
+  | { readonly kind: "none" }
+  | { readonly kind: "requested"; readonly state: SeoSyncState }
+  | { readonly kind: "refused"; readonly message: string };
+
+/**
+ * The gesture's own outcome, or `null` when this device has asked for nothing
+ * yet and there is nothing to say.
+ *
+ * Says nothing about what the sync will find. Ranksta answers `202` and does
+ * the work behind it, reporting neither a Job id nor a row count, so "asked
+ * for" is the whole of what this device can honestly claim.
+ */
+export function describeSyncOutcome(outcome: SeoSyncOutcome): string | null {
+  switch (outcome.kind) {
+    case "none":
+      return null;
+    // Both accepted states are one sentence on purpose: Ranksta is going to
+    // look, and which lock it took getting there is not the owner's business.
+    case "requested":
+      return "Sync requested";
+    // The one line that used to be missing. A sync the Gateway refused is the
+    // only case where a still synced time means the refresh really did fail,
+    // and it has to be distinguishable from the ordinary case where the sync
+    // ran and had nothing new to fetch.
+    case "refused":
+      return `Sync failed: ${outcome.message}`;
+  }
+}
+
 /** Reads one accepted sync request; the Site and the sync state are mandatory. */
 export function readSyncRequested(body: unknown): SeoSyncRequested | null {
   const candidate = body as {
@@ -601,6 +643,13 @@ export function describeCoverage(freshness: SeoFreshness): string {
  * This is the age of the data and nothing else. It is not `stale`, which says
  * which side of an outage the payload came from, and not `unconfirmed`, which
  * says the value came off this device and no read has confirmed it yet.
+ *
+ * It is also not the outcome of a refresh, and it must never be read as one.
+ * Ranksta stamps an arrival instant only for the days it actually fetched, and
+ * it skips a finalized day whose copy is younger than its reconciliation
+ * floor, so a sync that succeeds and finds nothing to fetch moves this value
+ * not at all. Pull to refresh for hours and this line is entitled to stay
+ * exactly where it is. `describeSyncOutcome` is what answers for the gesture.
  */
 export function describeSyncedAt(syncedAt: string | null): string {
   if (syncedAt === null || Number.isNaN(Date.parse(syncedAt))) {
