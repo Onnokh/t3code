@@ -1,8 +1,7 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
-import { useSavedRemoteConnection } from "../../../state/use-remote-environment-registry";
-import { useWorkspaceState } from "../../../state/workspace";
-import { clearDevskiCache, dropDevskiCacheEntries } from "../devski-read-cache";
+import { useDevskiConnection } from "../devski-read-cache-store";
+import { dropDevskiCacheEntries } from "../devski-read-cache";
 import type { JobDefinitionInput } from "./automations-authoring";
 import {
   interpretAutomationsResponse,
@@ -298,26 +297,19 @@ function invalidatingOnMutation(client: AutomationsClient): AutomationsClient {
 /**
  * Resolves the Automations client for the paired environment, or null while
  * this device is unpaired. Uses the same Device Session bearer that Code and
- * the capabilities probe already hold.
+ * the capabilities probe already hold, and the same Session the read cache is
+ * opened for, so a re-issued credential cannot hydrate the previous session's
+ * reads.
  */
 export function useAutomationsClient(): AutomationsClient | null {
-  const workspace = useWorkspaceState();
-  const environment =
-    workspace.environments.find((candidate) => candidate.connectionState === "connected") ??
-    workspace.environments[0] ??
-    null;
-  const connection = useSavedRemoteConnection(environment?.environmentId ?? null);
-  const bearerToken = connection?.bearerToken;
-  const httpBaseUrl = connection?.httpBaseUrl;
-
-  // A different environment or a re-issued credential invalidates every
-  // cached read: the next hydration must not show the old session's data.
-  useEffect(() => {
-    clearDevskiCache();
-  }, [bearerToken, httpBaseUrl]);
-
-  return useMemo(() => {
-    if (!bearerToken || !httpBaseUrl) return null;
-    return invalidatingOnMutation(createAutomationsClient(httpBaseUrl, bearerToken));
-  }, [bearerToken, httpBaseUrl]);
+  const connection = useDevskiConnection();
+  return useMemo(
+    () =>
+      connection === null
+        ? null
+        : invalidatingOnMutation(
+            createAutomationsClient(connection.httpBaseUrl, connection.bearerToken),
+          ),
+    [connection],
+  );
 }

@@ -1,11 +1,11 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 import { type StaticScreenProps } from "@react-navigation/native";
 
 import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
 import { FieldRow, SectionTitle } from "../automations/AutomationsUi";
-import { useSeoClient, useSeoRead } from "./seo-api";
+import { useSeoClient, useSeoRead, useSeoRefresh } from "./seo-api";
 import {
   describeIndexState,
   displayableEnvelope,
@@ -14,7 +14,7 @@ import {
   formatWindow,
   PARTIAL_VISIBILITY_NOTE,
 } from "./seo-state";
-import { SeoFreshnessBanner } from "./SeoUi";
+import { SeoFreshnessBanner, SeoSyncNote } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 type Params = { readonly path: string };
@@ -30,7 +30,6 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
   const { path } = route.params;
   const client = useSeoClient();
   const { selectedSiteId } = useSeoSitePreference();
-  const [refreshing, setRefreshing] = useState(false);
 
   const fetcher = useMemo(
     () => (client && selectedSiteId ? () => client.page(selectedSiteId, path) : null),
@@ -40,6 +39,9 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
     selectedSiteId ? `page:${selectedSiteId}:${path}` : null,
     fetcher,
   );
+  // Pull to refresh reads live and asks Ranksta to look at Search Console
+  // again. It resolves on the read, never on the sync.
+  const refresh = useSeoRefresh(client, selectedSiteId, reload);
   const envelope = displayableEnvelope(read);
   const page = envelope?.data ?? null;
 
@@ -61,19 +63,14 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
       className="flex-1 bg-screen"
       contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
       refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            void reload().finally(() => setRefreshing(false));
-          }}
-        />
+        <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
       }
     >
       <Text className="font-t3-bold text-foreground" selectable>
         {path}
       </Text>
       <SeoFreshnessBanner read={read} />
+      <SeoSyncNote notice={refresh.notice} />
       {page ? (
         <>
           <SectionTitle>Verdict</SectionTitle>

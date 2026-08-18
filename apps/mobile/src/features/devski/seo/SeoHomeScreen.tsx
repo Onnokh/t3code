@@ -6,8 +6,8 @@ import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
 import { ErrorBanner } from "../../../components/ErrorBanner";
 import { NativeHeaderToolbar } from "../../../native/StackHeader";
-import { useSeoClient, useSeoRead } from "./seo-api";
-import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
+import { useSeoClient, useSeoRead, useSeoRefresh } from "./seo-api";
+import { useDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
   formatShortDate,
   recentDays,
@@ -30,7 +30,7 @@ import {
   type SeoStackParamList,
 } from "./seo-state";
 import { SeoDailyChart } from "./SeoDailyChart";
-import { SeoSectionHeader, SeoStaleNote } from "./SeoUi";
+import { SeoSectionHeader, SeoStaleNote, SeoSyncNote } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 type SitesState =
@@ -157,20 +157,21 @@ export function SeoHomeScreen() {
   const client = useSeoClient();
   const { selectedSiteId, ready: preferenceReady, select } = useSeoSitePreference();
   // The Site list is what the switcher is made of, so it hydrates too:
-  // returning to this Area should not empty the menu for a round trip.
-  const [sitesState, setSitesState] = useState<SitesState>(() => {
-    const cached = readDevskiCacheEntry<readonly SeoSite[]>(SITES_CACHE_KEY);
-    return cached === null ? { kind: "loading" } : { kind: "ready", sites: cached };
-  });
-  const [refreshing, setRefreshing] = useState(false);
+  // returning to this Area — or relaunching — should not empty the menu for
+  // a round trip. The read that follows always replaces it.
+  const cachedSites = useDevskiCacheEntry<readonly SeoSite[]>(SITES_CACHE_KEY);
+  const [loadedSites, setLoadedSites] = useState<SitesState | null>(null);
+  const sitesState: SitesState =
+    loadedSites ??
+    (cachedSites === null ? { kind: "loading" } : { kind: "ready", sites: cachedSites.value });
 
   const loadSites = useCallback(async () => {
     if (!client) return;
     const result = await client.sites();
     if (result.kind === "ok") {
       writeDevskiCacheEntry(SITES_CACHE_KEY, result.value);
-      setSitesState({ kind: "ready", sites: result.value });
-    } else setSitesState({ kind: "error", message: summarizeSeoError(result) });
+      setLoadedSites({ kind: "ready", sites: result.value });
+    } else setLoadedSites({ kind: "error", message: summarizeSeoError(result) });
   }, [client]);
 
   useFocusEffect(
@@ -211,6 +212,11 @@ export function SeoHomeScreen() {
   // The same key the Registry screen reads, so opening it from here is a
   // hydrated screen rather than a second wait for the same rows.
   const registry = useSeoRead(siteId ? `registry:${siteId}` : null, registryFetcher);
+  // Pull to refresh reads every section live and asks Ranksta to look at
+  // Search Console again. It resolves on the reads, never on the sync.
+  const refresh = useSeoRefresh(client, siteId, () =>
+    Promise.all([loadSites(), history.reload(), log.reload(), registry.reload()]),
+  );
 
   if (!client) {
     return (
@@ -266,18 +272,7 @@ export function SeoHomeScreen() {
         className="flex-1 bg-screen"
         contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              void Promise.all([
-                loadSites(),
-                history.reload(),
-                log.reload(),
-                registry.reload(),
-              ]).finally(() => setRefreshing(false));
-            }}
-          />
+          <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
         }
       >
         {sitesState.kind === "loading" ? (
@@ -295,6 +290,7 @@ export function SeoHomeScreen() {
               <Text className="mt-0.5 text-base text-foreground-muted">{selectedSite.url}</Text>
             </View>
             <SeoStaleNote read={history.read} />
+            <SeoSyncNote notice={refresh.notice} />
             <SeoDailyChart days={days} loading={history.read.kind === "loading"} />
 
             <SeoSectionHeader

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useConnectionController } from "../../features/connection/useConnectionController";
 import { useSavedRemoteConnection } from "../../state/use-remote-environment-registry";
 import { useWorkspaceState } from "../../state/workspace";
+import { clearDevskiCache } from "./devski-read-cache";
 import {
   GATEWAY_UNAVAILABLE_STATE,
   interpretCapabilitiesResponse,
@@ -62,6 +63,10 @@ export function useDevskiGateway(): DevskiGatewayState {
       .then((nextState) => {
         if (disposed) return;
         if (nextState.kind === "pairing-required" && environment) {
+          // The Gateway is authoritative about a Device Session that is gone,
+          // so this is the moment to forget the reads it authorized — here and
+          // on this device — rather than leaving a record behind.
+          clearDevskiCache();
           void removeEnvironment(environment.environmentId);
         }
         setState(nextState);
