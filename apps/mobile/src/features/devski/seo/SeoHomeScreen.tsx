@@ -260,6 +260,7 @@ export function SeoHomeScreen() {
           showsHorizontalScrollIndicator={false}
           decelerationRate="fast"
           style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1 }}
           onMomentumScrollEnd={(event) => {
             const pageWidth = Math.max(1, event.nativeEvent.layoutMeasurement.width);
             const index = Math.min(
@@ -271,7 +272,7 @@ export function SeoHomeScreen() {
           }}
         >
           {sites.map((site) => (
-            <View key={site.id} style={{ width }}>
+            <View key={site.id} style={{ width, flex: 1 }}>
               <SeoHomeSitePage
                 client={client}
                 site={site}

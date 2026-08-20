@@ -89,6 +89,7 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
       showsHorizontalScrollIndicator={false}
       decelerationRate="fast"
       style={{ flex: 1 }}
+      contentContainerStyle={{ flexGrow: 1 }}
       onMomentumScrollEnd={(event) => {
         const pageWidth = Math.max(1, event.nativeEvent.layoutMeasurement.width);
         const index = Math.min(
@@ -100,7 +101,7 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
       }}
     >
       {sites.map((site) => (
-        <View key={site.id} style={{ width }}>
+        <View key={site.id} style={{ width, flex: 1 }}>
           <SeoPageDetailSite client={client} path={path} siteId={site.id} width={width} />
         </View>
       ))}
