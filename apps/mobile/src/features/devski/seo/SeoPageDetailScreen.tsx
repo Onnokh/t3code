@@ -86,6 +86,7 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
       data={sites}
       horizontal
       pagingEnabled
+      directionalLockEnabled
       showsHorizontalScrollIndicator={false}
       decelerationRate="fast"
       style={{ flex: 1 }}

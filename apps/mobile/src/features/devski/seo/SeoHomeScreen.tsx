@@ -264,6 +264,7 @@ export function SeoHomeScreen() {
           data={sites}
           horizontal
           pagingEnabled
+          directionalLockEnabled
           showsHorizontalScrollIndicator={false}
           decelerationRate="fast"
           style={{ flex: 1 }}
