@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RefreshControl, ScrollView, useWindowDimensions, View } from "react-native";
 import { type StaticScreenProps } from "@react-navigation/native";
+import PagerView from "react-native-pager-view";
 
 import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
@@ -51,7 +52,7 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
   }, [client]);
 
   const { width } = useWindowDimensions();
-  const listRef = useRef<ScrollView>(null);
+  const listRef = useRef<PagerView>(null);
   const selectedSite = resolveSelectedSite(selectedSiteId ?? undefined, sites);
   const selectedId = selectedSite?.id ?? selectedSiteId;
   const selectedIndex = Math.max(
@@ -61,7 +62,7 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
 
   useEffect(() => {
     if (sites.length === 0) return;
-    listRef.current?.scrollTo({ x: selectedIndex * width, animated: true });
+    listRef.current?.setPage(selectedIndex);
   }, [selectedIndex, sites.length]);
 
   if (!client || !selectedId) {
@@ -81,22 +82,15 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
   }
 
   return (
-    <ScrollView
+    <PagerView
       ref={listRef}
-      horizontal
-      pagingEnabled
-      directionalLockEnabled
-      showsHorizontalScrollIndicator={false}
-      decelerationRate="fast"
       style={{ flex: 1 }}
-      contentInsetAdjustmentBehavior="never"
-      contentContainerStyle={{ flexGrow: 1 }}
-      onMomentumScrollEnd={(event) => {
-        const pageWidth = Math.max(1, event.nativeEvent.layoutMeasurement.width);
-        const index = Math.min(
-          sites.length - 1,
-          Math.max(0, Math.round(event.nativeEvent.contentOffset.x / pageWidth)),
-        );
+      initialPage={selectedIndex}
+      orientation="horizontal"
+      offscreenPageLimit={1}
+      scrollEnabled
+      onPageSelected={(event) => {
+        const index = event.nativeEvent.position;
         const site = sites[index];
         if (site && site.id !== selectedId) select(site.id);
       }}
@@ -106,7 +100,7 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
           <SeoPageDetailSite client={client} path={path} siteId={site.id} width={width} />
         </View>
       ))}
-    </ScrollView>
+    </PagerView>
   );
 }
 
