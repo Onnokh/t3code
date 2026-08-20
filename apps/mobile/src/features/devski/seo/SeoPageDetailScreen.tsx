@@ -130,7 +130,8 @@ function SeoPageDetailSite(props: {
 
   return (
     <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
+      contentInsetAdjustmentBehavior="never"
+      directionalLockEnabled
       style={{ width: props.width }}
       className="flex-1 bg-screen"
       contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
