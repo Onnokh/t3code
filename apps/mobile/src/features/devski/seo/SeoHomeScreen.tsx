@@ -260,6 +260,7 @@ export function SeoHomeScreen() {
           showsHorizontalScrollIndicator={false}
           decelerationRate="fast"
           style={{ flex: 1 }}
+          contentInsetAdjustmentBehavior="never"
           contentContainerStyle={{ flexGrow: 1 }}
           onMomentumScrollEnd={(event) => {
             const pageWidth = Math.max(1, event.nativeEvent.layoutMeasurement.width);
@@ -322,6 +323,7 @@ function SeoHomeSitePage(props: {
 
   return (
     <ScrollView
+      contentInsetAdjustmentBehavior="never"
       style={{ width: props.width }}
       className="flex-1 bg-screen"
       contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
