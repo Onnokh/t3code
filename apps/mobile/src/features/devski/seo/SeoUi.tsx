@@ -1,5 +1,4 @@
-import { useMemo, type ReactNode } from "react";
-import { PanResponder, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../../components/AppText";
 import {
@@ -8,50 +7,7 @@ import {
   displayableEnvelope,
   type SeoFreshness,
   type SeoRead,
-  type SeoSite,
 } from "./seo-state";
-
-export function siteIndexForSwipe(index: number, distance: number, siteCount: number): number {
-  if (siteCount === 0 || Math.abs(distance) < 40) return index;
-  return Math.min(siteCount - 1, Math.max(0, index + (distance < 0 ? 1 : -1)));
-}
-
-/**
- * Adds horizontal project navigation to an otherwise normal vertical SEO
- * screen. Capturing only horizontally dominant movement leaves the page's
- * normal vertical scrolling untouched.
- */
-export function SeoSiteSwipeSurface(props: {
-  readonly sites: readonly SeoSite[];
-  readonly selectedSiteId: string | null;
-  readonly onSelect: (siteId: string) => void;
-  readonly children: ReactNode;
-}) {
-  const selectedIndex = props.sites.findIndex((site) => site.id === props.selectedSiteId);
-  const responder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponderCapture: (_, gesture) =>
-          Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
-        onPanResponderRelease: (_, gesture) => {
-          const nextIndex = siteIndexForSwipe(
-            Math.max(0, selectedIndex),
-            gesture.dx,
-            props.sites.length,
-          );
-          const site = props.sites[nextIndex];
-          if (site && site.id !== props.selectedSiteId) props.onSelect(site.id);
-        },
-      }),
-    [props.onSelect, props.selectedSiteId, props.sites, selectedIndex],
-  );
-
-  return (
-    <View {...responder.panHandlers} style={{ flex: 1 }}>
-      {props.children}
-    </View>
-  );
-}
 
 /**
  * Deliberately plain shared pieces for the SEO Area. PLO-416 ships a
