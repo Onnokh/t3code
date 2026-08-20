@@ -1,7 +1,91 @@
-import { Pressable, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Pressable, ScrollView, useWindowDimensions, View } from "react-native";
 
 import { AppText as Text } from "../../../components/AppText";
-import { describeFreshness, displayState, displayableEnvelope, type SeoRead } from "./seo-state";
+import {
+  describeFreshness,
+  displayState,
+  displayableEnvelope,
+  type SeoRead,
+  type SeoSite,
+} from "./seo-state";
+
+export function siteIndexForOffset(offset: number, pageWidth: number, siteCount: number): number {
+  if (siteCount === 0 || pageWidth <= 0) return 0;
+  return Math.min(siteCount - 1, Math.max(0, Math.round(offset / pageWidth)));
+}
+
+/**
+ * A native-feeling horizontal Site pager. The menu remains available for
+ * precise selection, while a short swipe moves the shared persisted Site
+ * selection used by every SEO screen.
+ */
+export function SeoSitePager(props: {
+  readonly sites: readonly SeoSite[];
+  readonly selectedSiteId: string | null;
+  readonly onSelect: (siteId: string) => void;
+}) {
+  const { width } = useWindowDimensions();
+  const pageWidth = Math.max(1, width - 40);
+  const scrollRef = useRef<ScrollView>(null);
+  const selectedIndex = Math.max(
+    0,
+    props.sites.findIndex((site) => site.id === props.selectedSiteId),
+  );
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ x: selectedIndex * pageWidth, animated: false });
+  }, [pageWidth, selectedIndex]);
+
+  if (props.sites.length === 0) return null;
+
+  return (
+    <View className="gap-1">
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        directionalLockEnabled
+        decelerationRate="fast"
+        scrollEventThrottle={16}
+        style={{ width: pageWidth }}
+        accessibilityLabel="SEO projects"
+        onMomentumScrollEnd={(event) => {
+          const index = siteIndexForOffset(
+            event.nativeEvent.contentOffset.x,
+            pageWidth,
+            props.sites.length,
+          );
+          const site = props.sites[index];
+          if (site && site.id !== props.selectedSiteId) props.onSelect(site.id);
+        }}
+      >
+        {props.sites.map((site) => (
+          <View key={site.id} style={{ width: pageWidth }} className="pr-2">
+            <View className="rounded-2xl border border-border bg-card px-4 py-3">
+              <Text className="text-xs text-foreground-muted">Swipe to switch project</Text>
+              <Text className="font-t3-bold text-lg text-foreground" selectable>
+                {site.label}
+              </Text>
+              <Text className="text-xs text-foreground-muted" numberOfLines={1} selectable>
+                {site.url}
+              </Text>
+              {!site.available ? (
+                <Text className="mt-1 text-xs text-foreground-muted">Currently unavailable</Text>
+              ) : null}
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+      {props.sites.length > 1 ? (
+        <Text className="text-center text-xs text-foreground-muted">
+          {`${selectedIndex + 1} of ${props.sites.length} projects`}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 
 /**
  * Deliberately plain shared pieces for the SEO Area. PLO-416 ships a

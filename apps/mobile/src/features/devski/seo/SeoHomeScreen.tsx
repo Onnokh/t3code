@@ -30,7 +30,7 @@ import {
   type SeoStackParamList,
 } from "./seo-state";
 import { SeoDailyChart } from "./SeoDailyChart";
-import { SeoSectionHeader, SeoStaleNote } from "./SeoUi";
+import { SeoSectionHeader, SeoSitePager, SeoStaleNote } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 type SitesState =
@@ -261,6 +261,9 @@ export function SeoHomeScreen() {
           ))}
         </NativeHeaderToolbar.Menu>
       </NativeHeaderToolbar>
+      <View className="bg-screen px-5 pt-3">
+        <SeoSitePager sites={sites} selectedSiteId={selectedSite?.id ?? null} onSelect={select} />
+      </View>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         className="flex-1 bg-screen"

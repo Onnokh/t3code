@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 import { type StaticScreenProps } from "@react-navigation/native";
 
 import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
 import { FieldRow, SectionTitle } from "../automations/AutomationsUi";
+import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import { useSeoClient, useSeoRead } from "./seo-api";
 import {
   describeIndexState,
@@ -13,13 +14,16 @@ import {
   formatMetrics,
   formatWindow,
   PARTIAL_VISIBILITY_NOTE,
+  resolveSelectedSite,
+  type SeoSite,
 } from "./seo-state";
-import { SeoFreshnessBanner } from "./SeoUi";
+import { SeoFreshnessBanner, SeoSitePager } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 type Params = { readonly path: string };
 
 const VISIBLE_SERIES_DAYS = 14;
+const SITES_CACHE_KEY = "seo:sites";
 
 /**
  * Full report for one canonical page path: plan, rationale, verdict
@@ -29,21 +33,37 @@ const VISIBLE_SERIES_DAYS = 14;
 export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
   const { path } = route.params;
   const client = useSeoClient();
-  const { selectedSiteId } = useSeoSitePreference();
+  const { selectedSiteId, select } = useSeoSitePreference();
+  const [sites, setSites] = useState<readonly SeoSite[]>(
+    () => readDevskiCacheEntry<readonly SeoSite[]>(SITES_CACHE_KEY) ?? [],
+  );
   const [refreshing, setRefreshing] = useState(false);
 
+  useEffect(() => {
+    if (!client) return;
+    let active = true;
+    void client.sites().then((result) => {
+      if (!active || result.kind !== "ok") return;
+      writeDevskiCacheEntry(SITES_CACHE_KEY, result.value);
+      setSites(result.value);
+    });
+    return () => {
+      active = false;
+    };
+  }, [client]);
+
+  const selectedSite = resolveSelectedSite(selectedSiteId ?? undefined, sites);
+  const siteId = selectedSite?.id ?? selectedSiteId;
+
   const fetcher = useMemo(
-    () => (client && selectedSiteId ? () => client.page(selectedSiteId, path) : null),
-    [client, selectedSiteId, path],
+    () => (client && siteId ? () => client.page(siteId, path) : null),
+    [client, siteId, path],
   );
-  const { read, reload } = useSeoRead(
-    selectedSiteId ? `page:${selectedSiteId}:${path}` : null,
-    fetcher,
-  );
+  const { read, reload } = useSeoRead(siteId ? `page:${siteId}:${path}` : null, fetcher);
   const envelope = displayableEnvelope(read);
   const page = envelope?.data ?? null;
 
-  if (!client || !selectedSiteId) {
+  if (!client || !siteId) {
     return (
       <View className="flex-1 bg-screen">
         <EmptyState
@@ -70,6 +90,7 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
         />
       }
     >
+      <SeoSitePager sites={sites} selectedSiteId={siteId} onSelect={select} />
       <Text className="font-t3-bold text-foreground" selectable>
         {path}
       </Text>
