@@ -1,8 +1,12 @@
 import { useEffect, useRef } from "react";
 import * as Notifications from "expo-notifications";
 import { useLinkTo } from "@react-navigation/native";
+import { Linking } from "react-native";
 
-import { routeAgentNotificationResponseOnce } from "./notificationPayload";
+import {
+  routeAgentNotificationResponseOnce,
+  routeAgentNotificationDeepLink,
+} from "./notificationPayload";
 import { consumeLastAgentNotificationResponse } from "./notificationResponseConsumer";
 
 export function useAgentNotificationNavigation(): void {
@@ -14,7 +18,12 @@ export function useAgentNotificationNavigation(): void {
       routeAgentNotificationResponseOnce({
         handledResponseIds: handledResponseIds.current,
         response,
-        navigate: linkTo,
+        navigate: (deepLink) =>
+          routeAgentNotificationDeepLink({
+            deepLink,
+            navigate: linkTo,
+            openURL: Linking.openURL,
+          }),
       });
     };
 

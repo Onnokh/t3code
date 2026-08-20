@@ -5,6 +5,8 @@ import { consumeLastAgentNotificationResponse } from "./notificationResponseCons
 
 import {
   extractAgentNotificationDeepLink,
+  normalizeExpoDevelopmentClientDeepLink,
+  routeAgentNotificationDeepLink,
   routeAgentNotificationResponseOnce,
 } from "./notificationPayload";
 
@@ -145,6 +147,27 @@ describe("extractAgentNotificationDeepLink", () => {
     ).toBe("/automations/runs/9f2c1a34-1b2c-4d5e-8f90-a1b2c3d4e5f6");
   });
 
+  it("accepts the fixed Expo development-client route with an HTTPS packager", () => {
+    const deepLink =
+      "devski.dev://expo-development-client/?url=https%3A%2F%2Fmetro.trycloudflare.com%2F";
+    expect(normalizeExpoDevelopmentClientDeepLink(deepLink)).toBe(deepLink);
+    expect(extractAgentNotificationDeepLink(responseWithData({ deepLink }))).toBe(deepLink);
+  });
+
+  it("rejects development-client links with unsafe outer or nested URLs", () => {
+    for (const deepLink of [
+      "devski://expo-development-client/?url=https%3A%2F%2Fmetro.trycloudflare.com%2F",
+      "devski.dev://other/?url=https%3A%2F%2Fmetro.trycloudflare.com%2F",
+      "devski.dev://expo-development-client/?url=http%3A%2F%2F192.168.1.187%3A8083",
+      "devski.dev://expo-development-client/?url=javascript%3Aalert(1)",
+      "devski.dev://expo-development-client/?url=https%3A%2F%2Fmetro.trycloudflare.com%2F%23x",
+      "devski.dev://expo-development-client/?url=https%3A%2F%2Fmetro.trycloudflare.com%2F&x=1",
+    ]) {
+      expect(normalizeExpoDevelopmentClientDeepLink(deepLink)).toBeNull();
+      expect(extractAgentNotificationDeepLink(responseWithData({ deepLink }))).toBeNull();
+    }
+  });
+
   it("rejects Automation deep links outside the Run detail allowlist", () => {
     expect(
       extractAgentNotificationDeepLink(responseWithData({ deepLink: "/automations/runs" })),
@@ -207,5 +230,34 @@ describe("routeAgentNotificationResponseOnce", () => {
     });
 
     expect(navigations).toEqual(["/threads/env/thread"]);
+  });
+});
+
+describe("routeAgentNotificationDeepLink", () => {
+  it("opens an Expo development-client destination with native Linking", async () => {
+    const openURL = vi.fn(() => Promise.resolve());
+    const navigate = vi.fn();
+    const deepLink =
+      "devski.dev://expo-development-client/?url=https%3A%2F%2Fmetro.trycloudflare.com%2F";
+
+    routeAgentNotificationDeepLink({ deepLink, navigate, openURL });
+    await Promise.resolve();
+
+    expect(openURL).toHaveBeenCalledWith(deepLink);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("keeps internal destinations inside React Navigation", () => {
+    const openURL = vi.fn(() => Promise.resolve());
+    const navigate = vi.fn();
+
+    routeAgentNotificationDeepLink({
+      deepLink: "/threads/environment/thread",
+      navigate,
+      openURL,
+    });
+
+    expect(navigate).toHaveBeenCalledWith("/threads/environment/thread");
+    expect(openURL).not.toHaveBeenCalled();
   });
 });

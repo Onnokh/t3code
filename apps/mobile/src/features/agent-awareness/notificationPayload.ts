@@ -69,6 +69,66 @@ function normalizeThreadDeepLink(value: string): string | null {
   }
 }
 
+/**
+ * The only notification destination that leaves the shipped app: the
+ * development build's Expo launcher with an HTTPS Metro/tunnel URL. Keep the
+ * outer scheme and route exact, and reject every other URL scheme or query key
+ * before the notification handler hands it to native Linking.
+ */
+export function normalizeExpoDevelopmentClientDeepLink(value: string): string | null {
+  if (value.trim() !== value) {
+    return null;
+  }
+  try {
+    const parsed = new URL(value);
+    if (
+      parsed.protocol !== "devski.dev:" ||
+      parsed.hostname !== "expo-development-client" ||
+      parsed.pathname !== "/" ||
+      parsed.username !== "" ||
+      parsed.password !== "" ||
+      parsed.port !== "" ||
+      parsed.hash !== "" ||
+      parsed.searchParams.size !== 1 ||
+      parsed.searchParams.get("url") === null
+    ) {
+      return null;
+    }
+
+    const packager = new URL(parsed.searchParams.get("url") ?? "");
+    if (
+      packager.protocol !== "https:" ||
+      packager.hostname.length === 0 ||
+      packager.username !== "" ||
+      packager.password !== "" ||
+      packager.hash !== ""
+    ) {
+      return null;
+    }
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+export function isExpoDevelopmentClientDeepLink(value: string): boolean {
+  return normalizeExpoDevelopmentClientDeepLink(value) !== null;
+}
+
+export function routeAgentNotificationDeepLink(input: {
+  readonly deepLink: string;
+  readonly navigate: (deepLink: string) => void;
+  readonly openURL: (url: string) => Promise<void>;
+}): void {
+  if (isExpoDevelopmentClientDeepLink(input.deepLink)) {
+    void input.openURL(input.deepLink).catch((cause: unknown) => {
+      console.error("Failed to open the Expo development client from a notification.", cause);
+    });
+    return;
+  }
+  input.navigate(input.deepLink);
+}
+
 const AUTOMATION_RUN_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
 
 /**
@@ -99,7 +159,9 @@ export function extractAgentNotificationDeepLink(response: unknown): string | nu
   const deepLink = data?.deepLink;
   if (typeof deepLink === "string") {
     const normalizedDeepLink =
-      normalizeThreadDeepLink(deepLink) ?? normalizeAutomationRunDeepLink(deepLink);
+      normalizeThreadDeepLink(deepLink) ??
+      normalizeAutomationRunDeepLink(deepLink) ??
+      normalizeExpoDevelopmentClientDeepLink(deepLink);
     if (normalizedDeepLink) {
       return normalizedDeepLink;
     }
