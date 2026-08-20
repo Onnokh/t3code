@@ -1,6 +1,9 @@
+import type { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 import { runtime } from "../lib/runtime";
+import * as MobileDatabase from "./mobile-database";
 import * as MobilePreferences from "./mobile-preferences";
 import * as MobileStorage from "./mobile-storage";
 
@@ -21,6 +24,28 @@ const runStorage = <A, E>(
 const runPreferences = <A, E>(
   use: (store: MobilePreferences.MobilePreferencesStore["Service"]) => Effect.Effect<A, E>,
 ) => runtime.runPromise(MobilePreferences.MobilePreferencesStore.pipe(Effect.flatMap(use)));
+
+const runDatabase = <A, E>(
+  use: (database: MobileDatabase.MobileDatabase["Service"]) => Effect.Effect<A, E>,
+) => runtime.runPromise(MobileDatabase.MobileDatabase.pipe(Effect.flatMap(use)));
+
+// The Devski Area keeps one snapshot of its cached reads per environment, so
+// it lives in the same client cache as the shell and thread snapshots and is
+// removed with them when an environment is unpaired.
+const DEVSKI_READ_CACHE_KEY = "reads";
+
+export const loadDevskiReadCache = (environmentId: EnvironmentId) =>
+  runDatabase((database) =>
+    database
+      .loadCache(environmentId, "devski", DEVSKI_READ_CACHE_KEY)
+      .pipe(Effect.map((stored) => (Option.isSome(stored) ? stored.value : null))),
+  );
+export const saveDevskiReadCache = (environmentId: EnvironmentId, payload: string) =>
+  runDatabase((database) =>
+    database.saveCache(environmentId, "devski", DEVSKI_READ_CACHE_KEY, 1, payload),
+  );
+export const removeDevskiReadCache = (environmentId: EnvironmentId) =>
+  runDatabase((database) => database.removeCache(environmentId, "devski", DEVSKI_READ_CACHE_KEY));
 
 export const loadSavedConnections = () => runStorage((storage) => storage.loadSavedConnections);
 export const saveConnection = (

@@ -6,7 +6,7 @@ import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
 import { FieldRow, SectionTitle } from "../automations/AutomationsUi";
 import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
-import { useSeoClient, useSeoRead } from "./seo-api";
+import { useSeoClient, useSeoRead, useSeoRefresh } from "./seo-api";
 import {
   describeIndexState,
   displayableEnvelope,
@@ -17,7 +17,7 @@ import {
   resolveSelectedSite,
   type SeoSite,
 } from "./seo-state";
-import { SeoFreshnessBanner, SeoSitePager } from "./SeoUi";
+import { SeoDataDate, SeoFreshnessBanner, SeoSitePager } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 type Params = { readonly path: string };
@@ -60,6 +60,7 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
     [client, siteId, path],
   );
   const { read, reload } = useSeoRead(siteId ? `page:${siteId}:${path}` : null, fetcher);
+  const refresh = useSeoRefresh(client, siteId, reload);
   const envelope = displayableEnvelope(read);
   const page = envelope?.data ?? null;
 
@@ -81,19 +82,14 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
       className="flex-1 bg-screen"
       contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
       refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            void reload().finally(() => setRefreshing(false));
-          }}
-        />
+        <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
       }
     >
       <SeoSitePager sites={sites} selectedSiteId={siteId} onSelect={select} />
       <Text className="font-t3-bold text-foreground" selectable>
         {path}
       </Text>
+      <SeoDataDate freshness={refresh.freshness} />
       <SeoFreshnessBanner read={read} />
       {page ? (
         <>

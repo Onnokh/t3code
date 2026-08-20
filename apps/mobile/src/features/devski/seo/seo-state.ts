@@ -1,12 +1,17 @@
 /**
- * Pure interpretation of the Devski SEO Read Contract
- * (`/api/devski/v1/seo/*`). The Gateway proxies Ranksta's Paradise and
- * wraps every site-scoped read in a `SeoEnvelope`; this module classifies
- * those responses for the plain SEO screens. It preserves Ranksta's
- * semantics — verdicts, reasons, trueTotals, phases, and index state are
- * displayed as returned and never recomputed on the phone. Unknown future
- * enum values stay display-safe strings.
+ * Pure interpretation of the Devski SEO Contract (`/api/devski/v1/seo/*`).
+ * The Gateway proxies Ranksta's Paradise and wraps every site-scoped read in
+ * a `SeoEnvelope`; this module classifies those responses for the plain SEO
+ * screens. It preserves Ranksta's semantics — verdicts, reasons, trueTotals,
+ * phases, and index state are displayed as returned and never recomputed on
+ * the phone. Unknown future enum values stay display-safe strings.
+ *
+ * The contract has one operation, the Site sync, and this module reads its
+ * answer too. It does not turn that answer into words: see
+ * `readSyncRequested`.
  */
+
+import { relativeTime } from "../../../lib/time";
 
 export type SeoSite = {
   readonly id: string;
@@ -16,7 +21,28 @@ export type SeoSite = {
 };
 
 export type SeoFreshness = {
+  /**
+   * When this Site's data last changed. Part of the contract and read by
+   * nothing on screen, on purpose: shown as an age it stood still through
+   * refreshes that had worked, because a sync that finds nothing new to store
+   * changes nothing here, and the owner read the frozen line as a broken
+   * feature. `rangeEnd` answers how current the data is and `checkedAt`
+   * answers for the gesture; between them there is no question left for this
+   * field to answer.
+   */
   readonly syncedAt: string | null;
+  /**
+   * When Ranksta last asked Google about this Site, as opposed to `syncedAt`,
+   * which is when the answer last changed anything. The two come apart on
+   * purpose: a sync that runs and finds nothing new to store leaves `syncedAt`
+   * where it was, so `checkedAt` is the only one of the pair that can answer
+   * for a refresh gesture.
+   *
+   * Optional because the Gateway is only now learning to send it. Absent and
+   * `null` mean the same thing — this device was told nothing — and neither may
+   * be rendered as a check that happened.
+   */
+  readonly checkedAt?: string | null;
   readonly rangeStart: string | null;
   readonly rangeEnd: string | null;
   readonly stale: boolean;
@@ -327,6 +353,44 @@ export function readEnvelope<T>(body: unknown): SeoEnvelope<T> | null {
 }
 
 /**
+ * What became of a sync request. Both states mean the same thing to this app
+ * — Ranksta is going to look at Search Console — and the Gateway answers
+ * both with 202, so neither is an error and neither is worth distinct
+ * wording. `already-running` is Ranksta's own per-Site lock answering, which
+ * is not a refusal.
+ *
+ * The Gateway used to answer a third state, `cooling-down`, behind a
+ * five-minute floor per Site, together with `retryAfterSeconds`. Both are
+ * gone from the contract: a pull to refresh that reports a cooldown instead
+ * of fetching is a refresh gesture that does not refresh.
+ */
+export type SeoSyncState = "started" | "already-running";
+
+export type SeoSyncRequested = {
+  readonly site: { readonly id: string; readonly label: string; readonly url: string };
+  readonly sync: {
+    readonly state: SeoSyncState;
+    readonly requestedAt: string;
+  };
+  readonly requestId: string;
+};
+
+/** Reads one accepted sync request; the Site and the sync state are mandatory. */
+export function readSyncRequested(body: unknown): SeoSyncRequested | null {
+  const candidate = body as {
+    site?: { id?: unknown };
+    sync?: { state?: unknown; requestedAt?: unknown };
+  } | null;
+  if (!candidate || typeof candidate !== "object") return null;
+  if (!candidate.site || typeof candidate.site.id !== "string") return null;
+  const sync = candidate.sync;
+  if (!sync || typeof sync !== "object") return null;
+  if (sync.state !== "started" && sync.state !== "already-running") return null;
+  if (typeof sync.requestedAt !== "string") return null;
+  return candidate as SeoSyncRequested;
+}
+
+/**
  * Resolves the effective Site: the persisted choice when it is still
  * configured, otherwise the first available Site, otherwise the first
  * configured Site. The server never silently assumes a Site — this rule is
@@ -345,11 +409,16 @@ export function resolveSelectedSite(
 /**
  * One screen's read lifecycle. `ready` keeps the latest envelope; a failed
  * revalidation retains the last successful envelope so the screen can show
- * visibly stale data instead of losing it.
+ * visibly stale data instead of losing it. `unconfirmed` marks an envelope
+ * this device stored at an earlier launch and no read has confirmed yet.
  */
 export type SeoRead<T> =
   | { readonly kind: "loading" }
-  | { readonly kind: "ready"; readonly envelope: SeoEnvelope<T> }
+  | {
+      readonly kind: "ready";
+      readonly envelope: SeoEnvelope<T>;
+      readonly unconfirmed?: boolean;
+    }
   | {
       readonly kind: "unavailable";
       readonly message: string;
@@ -383,12 +452,20 @@ export function displayableEnvelope<T>(read: SeoRead<T>): SeoEnvelope<T> | null 
   return null;
 }
 
-export type SeoDisplayState = "loading" | "current" | "stale" | "unavailable" | "pairing-required";
+export type SeoDisplayState =
+  | "loading"
+  | "current"
+  | "unconfirmed"
+  | "stale"
+  | "unavailable"
+  | "pairing-required";
 
 /**
- * The visible data state: `current` for a live read, `stale` when the
- * Gateway marked the payload stale or the latest revalidation failed while
- * older data remains displayable, `unavailable` when nothing can render.
+ * The visible data state: `current` for a live read, `unconfirmed` for what
+ * this device stored at an earlier launch while the live read is in flight,
+ * `stale` when the Gateway marked the payload stale or the latest
+ * revalidation failed while older data remains displayable, `unavailable`
+ * when nothing can render.
  */
 export function displayState(read: SeoRead<unknown>): SeoDisplayState {
   switch (read.kind) {
@@ -397,7 +474,8 @@ export function displayState(read: SeoRead<unknown>): SeoDisplayState {
     case "pairing-required":
       return "pairing-required";
     case "ready":
-      return read.envelope.freshness.stale ? "stale" : "current";
+      if (read.envelope.freshness.stale) return "stale";
+      return read.unconfirmed === true ? "unconfirmed" : "current";
     case "unavailable":
       return read.retained ? "stale" : "unavailable";
   }
@@ -514,14 +592,70 @@ export function formatDateRange(start: string | null, end: string | null): strin
   return `${start} – ${end}`;
 }
 
-/** The freshness line every SEO screen shows near its data. */
-export function describeFreshness(freshness: SeoFreshness): string {
-  const synced = freshness.syncedAt ? `Synced ${freshness.syncedAt}` : "Sync time unknown";
-  const range =
-    freshness.rangeStart && freshness.rangeEnd
-      ? ` · data ${freshness.rangeStart} – ${freshness.rangeEnd}`
-      : "";
-  return freshness.stale ? `STALE · ${synced}${range}` : `${synced}${range}`;
+/**
+ * One Search Console day, as Ranksta writes it, or `null` when the value is
+ * not one.
+ *
+ * Both tests earn their place. The pattern turns away an instant or any other
+ * stray string, and `Date.parse` turns away a well-shaped impossibility like
+ * `2026-13-45`, which the pattern is happy with.
+ */
+function readSearchConsoleDay(value: string | null): string | null {
+  if (value === null || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  return Number.isNaN(Date.parse(value)) ? null : value;
+}
+
+/**
+ * How long ago Ranksta last asked Google, or `null` when this device was told
+ * nothing it is allowed to repeat.
+ *
+ * This is the only place `relativeTime` may be handed a `checkedAt`. That
+ * helper answers "<1m" for every string it cannot parse, so an unreadable
+ * instant reaching it would surface as a check that had just happened —
+ * precisely the invented moment this whole line exists to stop. Parsing first
+ * and refusing outright is what makes "just now" a claim worth trusting.
+ */
+function describeCheck(checkedAt: string | null | undefined): string | null {
+  if (typeof checkedAt !== "string" || Number.isNaN(Date.parse(checkedAt))) return null;
+  const elapsed = relativeTime(checkedAt);
+  return elapsed === "<1m" ? "checked just now" : `checked ${elapsed} ago`;
+}
+
+/**
+ * The date this Site's data reaches, how recently Ranksta looked for more, and
+ * whether the answer came from the Gateway's outage fallback. Every SEO screen
+ * shows this one line, built from the `status` read.
+ *
+ * The date is `rangeEnd`, which on `status` is Ranksta's own `lastDate` — the
+ * last day Search Console has figures for. It replaces a relative "last synced"
+ * age, and the difference is the point. An age is recomputed against the clock
+ * every render, so it moves whether or not anything happened, and a stalled one
+ * is indistinguishable from a working one. A date moves when, and only when,
+ * there is genuinely newer data.
+ *
+ * `rangeStart` is deliberately left out. On `status` it is `firstDate`, the
+ * first day ever collected, which is a fact about the archive rather than about
+ * freshness, and putting a years-old date at the front of the line buries the
+ * one date the owner asked for. The screens that do care about their own
+ * comparison window already print it beside the numbers it belongs to.
+ *
+ * The day is rendered exactly as Ranksta wrote it, never through a locale
+ * formatter. "2026-08-14" is a Search Console day, not an instant, and turning
+ * it into a `Date` puts it at UTC midnight — which every timezone behind UTC
+ * would then render as the 13th. A date that is quietly off by one is worse
+ * than a plain ISO one.
+ *
+ * The check is appended only when there is a readable instant to append. The
+ * Gateway is only now learning to send `checkedAt`, so for a while it will send
+ * nothing, and a line that claims a check it was never told about is the same
+ * class of mistake as the age it replaces.
+ */
+export function describeCoverage(freshness: SeoFreshness | null): string {
+  const day = freshness === null ? null : readSearchConsoleDay(freshness.rangeEnd);
+  const date = day === null ? "Data date unknown" : `Data through ${day}`;
+  const check = freshness === null ? null : describeCheck(freshness.checkedAt);
+  const line = check === null ? date : `${date} · ${check}`;
+  return freshness?.stale === true ? `STALE · ${line}` : line;
 }
 
 /** Index state with its inspection date when Ranksta supplied one. */

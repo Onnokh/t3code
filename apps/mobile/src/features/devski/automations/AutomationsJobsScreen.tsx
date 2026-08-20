@@ -5,10 +5,8 @@ import { useFocusEffect, useNavigation, type NavigationProp } from "@react-navig
 import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
 import { ErrorBanner } from "../../../components/ErrorBanner";
-import { automationActivityRuns } from "../notifications/automation-activity";
-import { settleDevskiActivityForAutomationRuns } from "../notifications/automationNotifications";
 import { automationsCacheKeys, useAutomationsClient } from "./automations-api";
-import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
+import { useDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
   describeJobSchedule,
   describeRunSummary,
@@ -40,10 +38,10 @@ function jobLines(job: AutomationJob): string[] {
 export function AutomationsJobsScreen() {
   const navigation = useNavigation<NavigationProp<AutomationsStackParamList>>();
   const client = useAutomationsClient();
-  const [state, setState] = useState<LoadState>(() => {
-    const cached = readDevskiCacheEntry<readonly AutomationJob[]>(automationsCacheKeys.jobs);
-    return cached === null ? { kind: "loading" } : { kind: "ready", jobs: cached };
-  });
+  const cached = useDevskiCacheEntry<readonly AutomationJob[]>(automationsCacheKeys.jobs);
+  const [loaded, setLoaded] = useState<LoadState | null>(null);
+  const state: LoadState =
+    loaded ?? (cached === null ? { kind: "loading" } : { kind: "ready", jobs: cached.value });
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
@@ -51,17 +49,13 @@ export function AutomationsJobsScreen() {
     const result = await client.listJobs();
     if (result.kind === "ok") {
       writeDevskiCacheEntry(automationsCacheKeys.jobs, result.value);
-      setState({ kind: "ready", jobs: result.value });
-      // This list is exactly what tells the Devski Activity whether any
-      // Run is still going, so settle the card from the read that just
-      // landed rather than asking the Gateway a second time.
-      void settleDevskiActivityForAutomationRuns(automationActivityRuns(result.value));
+      setLoaded({ kind: "ready", jobs: result.value });
     } else if (result.kind === "pairing-required") {
-      setState({
+      setLoaded({
         kind: "error",
         message: "This Device Session expired or was revoked. Pair this device again.",
       });
-    } else setState({ kind: "error", message: result.error.message });
+    } else setLoaded({ kind: "error", message: result.error.message });
   }, [client]);
 
   useFocusEffect(

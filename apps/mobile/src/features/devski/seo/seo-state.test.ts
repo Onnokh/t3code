@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applySeoResult,
-  describeFreshness,
+  describeCoverage,
   describeIndexState,
   displayState,
   displayableEnvelope,
@@ -14,13 +14,16 @@ import {
   pagesNeedingAttention,
   readEnvelope,
   readSites,
+  readSyncRequested,
   resolveSelectedSite,
   summarizeSeoError,
   trueTotalsFromHistory,
   verdictSummary,
   type SeoEnvelope,
+  type SeoFreshness,
   type SeoHistoryData,
   type SeoPageRow,
+  type SeoRead,
   type SeoSite,
 } from "./seo-state";
 
@@ -240,6 +243,94 @@ describe("applySeoResult and displayState", () => {
     expect(read.kind).toBe("pairing-required");
     expect(displayState(read)).toBe("pairing-required");
   });
+
+  it("classifies what this device stored at an earlier launch as unconfirmed", () => {
+    expect(
+      displayState({ kind: "ready", envelope: envelope(historyData), unconfirmed: true }),
+    ).toBe("unconfirmed");
+  });
+
+  it("stops calling a stored envelope unconfirmed once a read replaces it", () => {
+    const hydrated: SeoRead<SeoHistoryData> = {
+      kind: "ready",
+      envelope: envelope(historyData),
+      unconfirmed: true,
+    };
+    expect(
+      displayState(applySeoResult(hydrated, { kind: "ok", value: envelope(historyData) })),
+    ).toBe("current");
+  });
+
+  it("retains a stored envelope when the read that would confirm it fails", () => {
+    const hydrated: SeoRead<SeoHistoryData> = {
+      kind: "ready",
+      envelope: envelope(historyData),
+      unconfirmed: true,
+    };
+    const failed = applySeoResult(hydrated, {
+      kind: "error",
+      error: { code: "unavailable", message: "The SEO service is unreachable." },
+    });
+    expect(displayState(failed)).toBe("stale");
+    expect(displayableEnvelope(failed)?.requestId).toBe("req-1");
+  });
+});
+
+describe("the sync operation", () => {
+  const requested = (state: string): Record<string, unknown> => ({
+    site: { id: "sleevy", label: "Sleevy", url: "https://sleevy.app" },
+    sync: { state, requestedAt: "2026-08-18T09:00:00.000Z" },
+    requestId: "req-2",
+  });
+
+  it("reads an accepted request", () => {
+    const value = readSyncRequested(requested("started"));
+    expect(value?.sync.state).toBe("started");
+    expect(value?.site.id).toBe("sleevy");
+  });
+
+  it("refuses a body with an unknown sync state", () => {
+    expect(readSyncRequested(requested("finished"))).toBeNull();
+  });
+
+  it("refuses the cooldown state the contract no longer has", () => {
+    expect(readSyncRequested(requested("cooling-down"))).toBeNull();
+  });
+
+  it("refuses a body without a sync block", () => {
+    expect(readSyncRequested({ site: { id: "sleevy" }, requestId: "req-2" })).toBeNull();
+  });
+
+  it("treats both accepted states as a success", () => {
+    for (const state of ["started", "already-running"]) {
+      const result = interpretSeoResponse(
+        { kind: "response", status: 202, body: requested(state) },
+        readSyncRequested,
+      );
+      expect(result.kind).toBe("ok");
+    }
+  });
+
+  it("leaves a refused sync request an error the refresh can ignore", () => {
+    const result = interpretSeoResponse(
+      {
+        kind: "response",
+        status: 503,
+        body: { code: "unavailable", message: "The SEO service is temporarily unavailable." },
+      },
+      readSyncRequested,
+    );
+    expect(result.kind).toBe("error");
+  });
+
+  it("has no sync-state wording left to render", async () => {
+    // A refresh reports itself by the synced time it shows, so removing the
+    // wording is the behaviour and its absence is what there is to pin. This
+    // fails the moment a describe-the-request helper comes back.
+    const exported = Object.keys(await import("./seo-state"));
+    expect(exported).not.toContain("describeSyncRequest");
+    expect(exported).not.toContain("formatRetryAfter");
+  });
 });
 
 describe("Ranksta semantics helpers", () => {
@@ -307,18 +398,94 @@ describe("formatting", () => {
     expect(describeIndexState("unknown", null)).toBe("Index state unknown");
     expect(describeIndexState("future-state", null)).toBe("future-state");
   });
+});
 
-  it("marks stale freshness visibly and shows the data range", () => {
-    expect(
-      describeFreshness({
-        syncedAt: "2026-08-15T05:00:00.000Z",
-        rangeStart: "2026-08-01",
-        rangeEnd: "2026-08-14",
-        stale: false,
-      }),
-    ).toBe("Synced 2026-08-15T05:00:00.000Z · data 2026-08-01 – 2026-08-14");
-    expect(
-      describeFreshness({ syncedAt: null, rangeStart: null, rangeEnd: null, stale: true }),
-    ).toBe("STALE · Sync time unknown");
+describe("the date of the data", () => {
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+  const freshness = (overrides: Partial<SeoFreshness> = {}): SeoFreshness => ({
+    syncedAt: "2026-08-15T05:00:00.000Z",
+    rangeStart: "2024-01-01",
+    rangeEnd: "2026-08-14",
+    stale: false,
+    ...overrides,
+  });
+
+  it("leads with the day the data reaches, not the day the archive starts", () => {
+    // The owner asked for the date of the data. On `status` `rangeStart` is the
+    // first day ever collected, so putting it first buries the only date that
+    // says how current the numbers are behind one that never changes.
+    expect(describeCoverage(freshness())).toBe("Data through 2026-08-14");
+  });
+
+  it("renders the day exactly as Ranksta wrote it", () => {
+    // A Search Console day is a day, not an instant. Formatted through a Date
+    // it lands on UTC midnight and reads as the previous day anywhere behind
+    // UTC, and a date that is silently off by one is worse than an ISO one.
+    expect(describeCoverage(freshness({ rangeEnd: "2026-01-01" }))).toBe("Data through 2026-01-01");
+  });
+
+  it("says the check happened when the Gateway says when", () => {
+    expect(describeCoverage(freshness({ checkedAt: minutesAgo(0) }))).toBe(
+      "Data through 2026-08-14 · checked just now",
+    );
+    expect(describeCoverage(freshness({ checkedAt: minutesAgo(7) }))).toBe(
+      "Data through 2026-08-14 · checked 7m ago",
+    );
+  });
+
+  it("claims no check at all when the Gateway sends none", () => {
+    // The deployed Gateway does not send `checkedAt` yet, so an absent field is
+    // the ordinary case for a while and must read as silence, not as a check.
+    // A `null` is the same statement made explicitly.
+    expect(describeCoverage(freshness())).toBe("Data through 2026-08-14");
+    expect(describeCoverage(freshness({ checkedAt: null }))).toBe("Data through 2026-08-14");
+  });
+
+  it("never lets an unreadable instant read as a check that just happened", () => {
+    // `relativeTime` answers "<1m" for anything it cannot parse, so a malformed
+    // `checkedAt` reaching it would claim a check this second over data that
+    // has not been looked at in a week. The claim is dropped instead.
+    expect(describeCoverage(freshness({ checkedAt: "not an instant" }))).toBe(
+      "Data through 2026-08-14",
+    );
+    expect(describeCoverage(freshness({ checkedAt: "" }))).toBe("Data through 2026-08-14");
+  });
+
+  it("never invents a date out of an unreadable day", () => {
+    expect(describeCoverage(freshness({ rangeEnd: null }))).toBe("Data date unknown");
+    expect(describeCoverage(freshness({ rangeEnd: "yesterday" }))).toBe("Data date unknown");
+    // Well shaped and still not a day that exists.
+    expect(describeCoverage(freshness({ rangeEnd: "2026-13-45" }))).toBe("Data date unknown");
+  });
+
+  it("says the date is unknown before any status read has landed", () => {
+    // A screen opened on an unpaired device, or one whose status read failed
+    // with nothing retained, has no date to show and must not imply one.
+    expect(describeCoverage(null)).toBe("Data date unknown");
+  });
+
+  it("marks a date the Gateway served from its outage fallback", () => {
+    // `stale` says which side of an outage the answer came from. It is not the
+    // age of the data and not this device's cache, and all three can be true at
+    // once, so it gets its own marker rather than changing the date.
+    expect(describeCoverage(freshness({ stale: true, checkedAt: minutesAgo(3) }))).toBe(
+      "STALE · Data through 2026-08-14 · checked 3m ago",
+    );
+    expect(describeCoverage(freshness({ stale: true, rangeEnd: null }))).toBe(
+      "STALE · Data date unknown",
+    );
+  });
+
+  it("says nothing about a sync anywhere in the line", () => {
+    // The wording a previous attempt shipped and the owner rejected. The line
+    // reports the data and the check; the gesture's own bookkeeping is not the
+    // owner's business.
+    const lines = [
+      describeCoverage(freshness()),
+      describeCoverage(freshness({ checkedAt: minutesAgo(2) })),
+      describeCoverage(freshness({ stale: true })),
+      describeCoverage(null),
+    ];
+    for (const line of lines) expect(line.toLowerCase()).not.toContain("sync");
   });
 });

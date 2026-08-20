@@ -5,7 +5,7 @@ import { useNavigation, type NavigationProp } from "@react-navigation/native";
 import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
 import { ChoiceRow, ListRow, SectionTitle } from "../automations/AutomationsUi";
-import { useSeoClient, useSeoRead } from "./seo-api";
+import { useSeoClient, useSeoRead, useSeoRefresh } from "./seo-api";
 import {
   displayableEnvelope,
   formatDateRange,
@@ -14,7 +14,7 @@ import {
   type SeoQueryRow,
   type SeoStackParamList,
 } from "./seo-state";
-import { SeoFreshnessBanner } from "./SeoUi";
+import { SeoDataDate, SeoFreshnessBanner } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 const QUERY_LIMIT = 100;
@@ -45,7 +45,6 @@ export function SeoQueriesScreen() {
   const client = useSeoClient();
   const { selectedSiteId } = useSeoSitePreference();
   const [includeBrand, setIncludeBrand] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
 
   const fetcher = useMemo(
     () =>
@@ -58,6 +57,9 @@ export function SeoQueriesScreen() {
     selectedSiteId ? `queries:${selectedSiteId}:${includeBrand ? "brand" : "nonbrand"}` : null,
     fetcher,
   );
+  // Pull to refresh reads live and asks Ranksta to look at Search Console
+  // again. It resolves on the read, never on the sync.
+  const refresh = useSeoRefresh(client, selectedSiteId, reload);
   const envelope = displayableEnvelope(read);
 
   if (!client || !selectedSiteId) {
@@ -78,15 +80,10 @@ export function SeoQueriesScreen() {
       className="flex-1 bg-screen"
       contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
       refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            void reload().finally(() => setRefreshing(false));
-          }}
-        />
+        <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
       }
     >
+      <SeoDataDate freshness={refresh.freshness} />
       <SeoFreshnessBanner read={read} />
       <Text className="text-xs text-foreground-muted">{PARTIAL_VISIBILITY_NOTE}</Text>
       <SectionTitle>Brand</SectionTitle>

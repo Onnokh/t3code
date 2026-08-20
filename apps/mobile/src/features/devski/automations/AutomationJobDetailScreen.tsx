@@ -12,7 +12,7 @@ import { ErrorBanner } from "../../../components/ErrorBanner";
 import { uuidv4 } from "../../../lib/uuid";
 import { useAutomationNotificationOffer } from "../notifications/automationNotifications";
 import { automationsCacheKeys, useAutomationsClient } from "./automations-api";
-import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
+import { useDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import {
   availableLifecycleActions,
   deleteBlockedByActiveRun,
@@ -82,10 +82,10 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
   const navigation = useNavigation<NavigationProp<AutomationsStackParamList>>();
   const client = useAutomationsClient();
   const offerNotifications = useAutomationNotificationOffer();
-  const [state, setState] = useState<LoadState>(() => {
-    const cached = readDevskiCacheEntry<CachedJobDetail>(automationsCacheKeys.job(jobId));
-    return cached === null ? { kind: "loading" } : { kind: "ready", ...cached };
-  });
+  const cached = useDevskiCacheEntry<CachedJobDetail>(automationsCacheKeys.job(jobId));
+  const [loaded, setLoaded] = useState<LoadState | null>(null);
+  const state: LoadState =
+    loaded ?? (cached === null ? { kind: "loading" } : { kind: "ready", ...cached.value });
   const [refreshing, setRefreshing] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
@@ -101,9 +101,9 @@ export function AutomationJobDetailScreen({ route }: StaticScreenProps<Params>) 
     if (jobResult.kind === "ok" && runsResult.kind === "ok") {
       const detail = { job: jobResult.value, runs: runsResult.value };
       writeDevskiCacheEntry(automationsCacheKeys.job(jobId), detail);
-      setState({ kind: "ready", ...detail });
+      setLoaded({ kind: "ready", ...detail });
     } else {
-      setState({
+      setLoaded({
         kind: "error",
         message: summarizeError(jobResult.kind === "ok" ? runsResult : jobResult),
       });

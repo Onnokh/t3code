@@ -17,8 +17,8 @@ import { ConnectionsNewRouteScreen } from "../connection/ConnectionsNewRouteScre
 import { useConnectionController } from "../connection/useConnectionController";
 import { codeTabBarDisplay } from "./devski-shell-chrome";
 import {
-  useDevskiActivityReconciliation,
   useDevskiActivityTokenRegistration,
+  useDevskiAlertTokenRegistration,
   useDevskiPushToStartRegistration,
 } from "./notifications/automationNotifications";
 import { AutomationJobDetailScreen } from "./automations/AutomationJobDetailScreen";
@@ -145,11 +145,6 @@ const PairingNavigation = createStaticNavigation(PairingStack);
 export function DevskiRootShell(props: Pick<NavigationProps, "linking" | "theme">) {
   const { environments, isReady } = useEnvironments();
   const { removeEnvironment } = useConnectionController();
-  // A Run finishes whether or not Automations is on screen, so the shell
-  // owns ending the Devski Activity: at launch it clears a card that
-  // outlived the process that armed it, and on foreground one whose Run
-  // ended while Devski was closed.
-  useDevskiActivityReconciliation();
   // The Gateway can only create a card if it holds this device's
   // push-to-start token, and that is the whole point: a scheduled Run
   // fires while Devski is closed.
@@ -157,6 +152,12 @@ export function DevskiRootShell(props: Pick<NavigationProps, "linking" | "theme"
   // A card the Gateway started gets its activity token issued to the app,
   // so the Gateway cannot update or end it until this hands it over.
   useDevskiActivityTokenRegistration();
+  // Live Activity tokens need no authorization, so a device can show cards
+  // while holding no alert token at all — which is how this install had
+  // never delivered a single Devski notification. This registers the alert
+  // token whenever iOS permission already allows one, and prompts for
+  // nothing.
+  useDevskiAlertTokenRegistration();
   const authorizedEnvironments = environments.filter(
     (environment) => environment.connection.failureReason !== "authentication",
   );
