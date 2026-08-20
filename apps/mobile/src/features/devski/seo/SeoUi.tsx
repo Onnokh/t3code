@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { Pressable, ScrollView, useWindowDimensions, View } from "react-native";
+import { useMemo, type ReactNode } from "react";
+import { PanResponder, Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../../components/AppText";
 import {
@@ -11,79 +11,44 @@ import {
   type SeoSite,
 } from "./seo-state";
 
-export function siteIndexForOffset(offset: number, pageWidth: number, siteCount: number): number {
-  if (siteCount === 0 || pageWidth <= 0) return 0;
-  return Math.min(siteCount - 1, Math.max(0, Math.round(offset / pageWidth)));
+export function siteIndexForSwipe(index: number, distance: number, siteCount: number): number {
+  if (siteCount === 0 || Math.abs(distance) < 40) return index;
+  return Math.min(siteCount - 1, Math.max(0, index + (distance < 0 ? 1 : -1)));
 }
 
 /**
- * A native-feeling horizontal Site pager. The menu remains available for
- * precise selection, while a short swipe moves the shared persisted Site
- * selection used by every SEO screen.
+ * Adds horizontal project navigation to an otherwise normal vertical SEO
+ * screen. Capturing only horizontally dominant movement leaves the page's
+ * normal vertical scrolling untouched.
  */
-export function SeoSitePager(props: {
+export function SeoSiteSwipeSurface(props: {
   readonly sites: readonly SeoSite[];
   readonly selectedSiteId: string | null;
   readonly onSelect: (siteId: string) => void;
+  readonly children: ReactNode;
 }) {
-  const { width } = useWindowDimensions();
-  const pageWidth = Math.max(1, width - 40);
-  const scrollRef = useRef<ScrollView>(null);
-  const selectedIndex = Math.max(
-    0,
-    props.sites.findIndex((site) => site.id === props.selectedSiteId),
-  );
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ x: selectedIndex * pageWidth, animated: false });
-  }, [pageWidth, selectedIndex]);
-
-  if (props.sites.length === 0) return null;
-
-  return (
-    <View className="gap-1">
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        directionalLockEnabled
-        decelerationRate="fast"
-        scrollEventThrottle={16}
-        style={{ width: pageWidth }}
-        accessibilityLabel="SEO projects"
-        onMomentumScrollEnd={(event) => {
-          const index = siteIndexForOffset(
-            event.nativeEvent.contentOffset.x,
-            pageWidth,
+  const selectedIndex = props.sites.findIndex((site) => site.id === props.selectedSiteId);
+  const responder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_, gesture) =>
+          Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+        onPanResponderRelease: (_, gesture) => {
+          const nextIndex = siteIndexForSwipe(
+            Math.max(0, selectedIndex),
+            gesture.dx,
             props.sites.length,
           );
-          const site = props.sites[index];
+          const site = props.sites[nextIndex];
           if (site && site.id !== props.selectedSiteId) props.onSelect(site.id);
-        }}
-      >
-        {props.sites.map((site) => (
-          <View key={site.id} style={{ width: pageWidth }} className="pr-2">
-            <View className="rounded-2xl border border-border bg-card px-4 py-3">
-              <Text className="text-xs text-foreground-muted">Swipe to switch project</Text>
-              <Text className="font-t3-bold text-lg text-foreground" selectable>
-                {site.label}
-              </Text>
-              <Text className="text-xs text-foreground-muted" numberOfLines={1} selectable>
-                {site.url}
-              </Text>
-              {!site.available ? (
-                <Text className="mt-1 text-xs text-foreground-muted">Currently unavailable</Text>
-              ) : null}
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-      {props.sites.length > 1 ? (
-        <Text className="text-center text-xs text-foreground-muted">
-          {`${selectedIndex + 1} of ${props.sites.length} projects`}
-        </Text>
-      ) : null}
+        },
+      }),
+    [props.onSelect, props.selectedSiteId, props.sites, selectedIndex],
+  );
+
+  return (
+    <View {...responder.panHandlers} style={{ flex: 1 }}>
+      {props.children}
     </View>
   );
 }

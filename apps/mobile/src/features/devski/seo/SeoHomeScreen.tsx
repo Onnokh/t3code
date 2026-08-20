@@ -30,7 +30,7 @@ import {
   type SeoStackParamList,
 } from "./seo-state";
 import { SeoDailyChart } from "./SeoDailyChart";
-import { SeoDataDate, SeoSectionHeader, SeoSitePager, SeoStaleNote } from "./SeoUi";
+import { SeoDataDate, SeoSectionHeader, SeoSiteSwipeSurface, SeoStaleNote } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
 
 type SitesState =
@@ -264,87 +264,92 @@ export function SeoHomeScreen() {
           ))}
         </NativeHeaderToolbar.Menu>
       </NativeHeaderToolbar>
-      <View className="bg-screen px-5 pt-3">
-        <SeoSitePager sites={sites} selectedSiteId={selectedSite?.id ?? null} onSelect={select} />
-      </View>
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        className="flex-1 bg-screen"
-        contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
-        refreshControl={
-          <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
-        }
+      <SeoSiteSwipeSurface
+        sites={sites}
+        selectedSiteId={selectedSite?.id ?? null}
+        onSelect={select}
       >
-        {sitesState.kind === "loading" ? (
-          <Text className="text-sm text-foreground-muted">Loading configured Sites…</Text>
-        ) : null}
-        {sitesState.kind === "error" ? <ErrorBanner message={sitesState.message} /> : null}
-        {sitesState.kind === "ready" && sites.length === 0 ? (
-          <Text className="text-sm text-foreground-muted">No Sites are configured.</Text>
-        ) : null}
+        <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
+          className="flex-1 bg-screen"
+          contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
+          refreshControl={
+            <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
+          }
+        >
+          {sitesState.kind === "loading" ? (
+            <Text className="text-sm text-foreground-muted">Loading configured Sites…</Text>
+          ) : null}
+          {sitesState.kind === "error" ? <ErrorBanner message={sitesState.message} /> : null}
+          {sitesState.kind === "ready" && sites.length === 0 ? (
+            <Text className="text-sm text-foreground-muted">No Sites are configured.</Text>
+          ) : null}
 
-        {selectedSite ? (
-          <>
-            <View>
-              <Text className="font-t3-bold text-3xl text-foreground">{selectedSite.label}</Text>
-              <Text className="mt-0.5 text-base text-foreground-muted">{selectedSite.url}</Text>
-            </View>
-            <SeoDataDate freshness={refresh.freshness} />
-            <SeoStaleNote read={history.read} />
-            <SeoDailyChart days={days} loading={history.read.kind === "loading"} />
+          {selectedSite ? (
+            <>
+              <View>
+                <Text className="font-t3-bold text-3xl text-foreground">{selectedSite.label}</Text>
+                <Text className="mt-0.5 text-base text-foreground-muted">{selectedSite.url}</Text>
+              </View>
+              <SeoDataDate freshness={refresh.freshness} />
+              <SeoStaleNote read={history.read} />
+              <SeoDailyChart days={days} loading={history.read.kind === "loading"} />
 
-            <SeoSectionHeader
-              title="Daily overview"
-              actionLabel="see more"
-              onPress={() => navigation.navigate("SeoHistory")}
-            />
-            {days.length === 0 ? (
-              <Text className="text-sm text-foreground-muted">
-                No daily totals yet for this Site.
-              </Text>
-            ) : (
-              <DailyTable days={recentDays(days)} />
-            )}
-
-            <SeoSectionHeader
-              title="Log"
-              actionLabel="see more"
-              onPress={() => navigation.navigate("SeoLog")}
-            />
-            <SeoStaleNote read={log.read} />
-            {actions.length === 0 ? (
-              <Text className="text-sm text-foreground-muted">No Actions or Notes logged yet.</Text>
-            ) : (
-              actions
-                .slice(0, OVERVIEW_LOG_ENTRIES)
-                .map((entry, index) => (
-                  <LogRow
-                    key={`${entry.date}:${entry.path}:${entry.kind}:${entry.id ?? index}`}
-                    entry={entry}
-                    onPress={() => navigation.navigate("SeoPage", { path: entry.path })}
-                  />
-                ))
-            )}
-
-            <SeoSectionHeader
-              title="Registry"
-              actionLabel="see more"
-              onPress={() => navigation.navigate("SeoRegistry")}
-            />
-            <SeoStaleNote read={registry.read} />
-            {targets.length === 0 ? (
-              <Text className="text-sm text-foreground-muted">
-                The Registry has no targets yet.
-              </Text>
-            ) : (
-              <RegistryTable
-                targets={targets.slice(0, OVERVIEW_REGISTRY_ROWS)}
-                onSelect={(path) => navigation.navigate("SeoPage", { path })}
+              <SeoSectionHeader
+                title="Daily overview"
+                actionLabel="see more"
+                onPress={() => navigation.navigate("SeoHistory")}
               />
-            )}
-          </>
-        ) : null}
-      </ScrollView>
+              {days.length === 0 ? (
+                <Text className="text-sm text-foreground-muted">
+                  No daily totals yet for this Site.
+                </Text>
+              ) : (
+                <DailyTable days={recentDays(days)} />
+              )}
+
+              <SeoSectionHeader
+                title="Log"
+                actionLabel="see more"
+                onPress={() => navigation.navigate("SeoLog")}
+              />
+              <SeoStaleNote read={log.read} />
+              {actions.length === 0 ? (
+                <Text className="text-sm text-foreground-muted">
+                  No Actions or Notes logged yet.
+                </Text>
+              ) : (
+                actions
+                  .slice(0, OVERVIEW_LOG_ENTRIES)
+                  .map((entry, index) => (
+                    <LogRow
+                      key={`${entry.date}:${entry.path}:${entry.kind}:${entry.id ?? index}`}
+                      entry={entry}
+                      onPress={() => navigation.navigate("SeoPage", { path: entry.path })}
+                    />
+                  ))
+              )}
+
+              <SeoSectionHeader
+                title="Registry"
+                actionLabel="see more"
+                onPress={() => navigation.navigate("SeoRegistry")}
+              />
+              <SeoStaleNote read={registry.read} />
+              {targets.length === 0 ? (
+                <Text className="text-sm text-foreground-muted">
+                  The Registry has no targets yet.
+                </Text>
+              ) : (
+                <RegistryTable
+                  targets={targets.slice(0, OVERVIEW_REGISTRY_ROWS)}
+                  onSelect={(path) => navigation.navigate("SeoPage", { path })}
+                />
+              )}
+            </>
+          ) : null}
+        </ScrollView>
+      </SeoSiteSwipeSurface>
     </>
   );
 }
