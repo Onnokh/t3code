@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  FlatList,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { Pressable, RefreshControl, ScrollView, useWindowDimensions, View } from "react-native";
 import { useFocusEffect, useNavigation, type NavigationProp } from "@react-navigation/native";
 
 import { AppText as Text } from "../../../components/AppText";
@@ -210,7 +203,7 @@ export function SeoHomeScreen() {
   }
 
   const { width } = useWindowDimensions();
-  const listRef = useRef<FlatList<SeoSite>>(null);
+  const listRef = useRef<ScrollView>(null);
   const selectedIndex = Math.max(
     0,
     sites.findIndex((site) => site.id === selectedSite?.id),
@@ -218,7 +211,7 @@ export function SeoHomeScreen() {
 
   useEffect(() => {
     if (sites.length === 0) return;
-    listRef.current?.scrollToIndex({ index: selectedIndex, animated: true });
+    listRef.current?.scrollTo({ x: selectedIndex * width, animated: true });
   }, [selectedIndex, sites.length]);
 
   return (
@@ -259,22 +252,14 @@ export function SeoHomeScreen() {
           </Text>
         </View>
       ) : (
-        <FlatList
+        <ScrollView
           ref={listRef}
-          data={sites}
           horizontal
           pagingEnabled
           directionalLockEnabled
           showsHorizontalScrollIndicator={false}
           decelerationRate="fast"
           style={{ flex: 1 }}
-          contentInsetAdjustmentBehavior="never"
-          keyExtractor={(site) => site.id}
-          getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
-          initialScrollIndex={selectedIndex}
-          onScrollToIndexFailed={({ index }) => {
-            setTimeout(() => listRef.current?.scrollToIndex({ index, animated: false }), 0);
-          }}
           onMomentumScrollEnd={(event) => {
             const pageWidth = Math.max(1, event.nativeEvent.layoutMeasurement.width);
             const index = Math.min(
@@ -284,16 +269,19 @@ export function SeoHomeScreen() {
             const site = sites[index];
             if (site && site.id !== selectedSite?.id) select(site.id);
           }}
-          renderItem={({ item }) => (
-            <SeoHomeSitePage
-              client={client}
-              site={item}
-              width={width}
-              navigation={navigation}
-              onRefreshSites={loadSites}
-            />
-          )}
-        />
+        >
+          {sites.map((site) => (
+            <View key={site.id} style={{ width }}>
+              <SeoHomeSitePage
+                client={client}
+                site={site}
+                width={width}
+                navigation={navigation}
+                onRefreshSites={loadSites}
+              />
+            </View>
+          ))}
+        </ScrollView>
       )}
     </>
   );
@@ -333,8 +321,6 @@ function SeoHomeSitePage(props: {
 
   return (
     <ScrollView
-      contentInsetAdjustmentBehavior="never"
-      directionalLockEnabled
       style={{ width: props.width }}
       className="flex-1 bg-screen"
       contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
