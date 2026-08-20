@@ -34,7 +34,12 @@ import { SeoQueriesScreen } from "./seo/SeoQueriesScreen";
 import { SeoRegistryScreen } from "./seo/SeoRegistryScreen";
 
 const SeoStack = createNativeStackNavigator({
-  screenOptions: GLASS_HEADER_OPTIONS,
+  screenOptions: {
+    ...GLASS_HEADER_OPTIONS,
+    headerTransparent: false,
+    scrollEdgeEffects: undefined,
+    unstable_navigationItemStyle: undefined,
+  },
   screens: {
     SeoHome: createNativeStackScreen({
       screen: SeoHomeScreen,

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pressable, RefreshControl, ScrollView, useWindowDimensions, View } from "react-native";
 import { useFocusEffect, useNavigation, type NavigationProp } from "@react-navigation/native";
 
 import { AppText as Text } from "../../../components/AppText";
@@ -157,8 +157,7 @@ export function SeoHomeScreen() {
   const client = useSeoClient();
   const { selectedSiteId, ready: preferenceReady, select } = useSeoSitePreference();
   // The Site list is what the switcher is made of, so it hydrates too:
-  // returning to this Area — or relaunching — should not empty the menu for
-  // a round trip. The read that follows always replaces it.
+  // returning to this Area should not empty the menu for a round trip.
   const cachedSites = useDevskiCacheEntry<readonly SeoSite[]>(SITES_CACHE_KEY);
   const [loadedSites, setLoadedSites] = useState<SitesState | null>(null);
   const sitesState: SitesState =
@@ -191,33 +190,6 @@ export function SeoHomeScreen() {
     }
   }, [preferenceReady, selectedSite, selectedSiteId, select]);
 
-  const siteId = selectedSite?.id ?? null;
-  const historyFetcher = useMemo(
-    () => (client && siteId ? () => client.history(siteId, OVERVIEW_HISTORY_DAYS) : null),
-    [client, siteId],
-  );
-  const logFetcher = useMemo(
-    () => (client && siteId ? () => client.log(siteId) : null),
-    [client, siteId],
-  );
-  const registryFetcher = useMemo(
-    () => (client && siteId ? () => client.registry(siteId) : null),
-    [client, siteId],
-  );
-  const history = useSeoRead(
-    siteId ? `history:${siteId}:${OVERVIEW_HISTORY_DAYS}` : null,
-    historyFetcher,
-  );
-  const log = useSeoRead(siteId ? `log:${siteId}` : null, logFetcher);
-  // The same key the Registry screen reads, so opening it from here is a
-  // hydrated screen rather than a second wait for the same rows.
-  const registry = useSeoRead(siteId ? `registry:${siteId}` : null, registryFetcher);
-  // Pull to refresh reads every section live and asks Ranksta to look at
-  // Search Console again. It resolves on the reads, never on the sync.
-  const refresh = useSeoRefresh(client, siteId, () =>
-    Promise.all([loadSites(), history.reload(), log.reload(), registry.reload()]),
-  );
-
   if (!client) {
     return (
       <View className="flex-1 bg-screen">
@@ -230,14 +202,17 @@ export function SeoHomeScreen() {
     );
   }
 
-  const historyEnvelope = displayableEnvelope(history.read);
-  const logEnvelope = displayableEnvelope(log.read);
-  const registryEnvelope = displayableEnvelope(registry.read);
-  const days = historyEnvelope?.data.days ?? [];
-  const actions = logEnvelope?.data.actions ?? [];
-  // Ranksta orders the Registry by priority; the phone keeps that order
-  // rather than inventing one of its own.
-  const targets = registryEnvelope?.data.targets ?? [];
+  const { width } = useWindowDimensions();
+  const listRef = useRef<ScrollView>(null);
+  const selectedIndex = Math.max(
+    0,
+    sites.findIndex((site) => site.id === selectedSite?.id),
+  );
+
+  useEffect(() => {
+    if (sites.length === 0) return;
+    listRef.current?.scrollTo({ x: selectedIndex * width, animated: true });
+  }, [selectedIndex, sites.length]);
 
   return (
     <>
@@ -267,84 +242,146 @@ export function SeoHomeScreen() {
           ))}
         </NativeHeaderToolbar.Menu>
       </NativeHeaderToolbar>
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        className="flex-1 bg-screen"
-        contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
-        refreshControl={
-          <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
-        }
-      >
-        {sitesState.kind === "loading" ? (
-          <Text className="text-sm text-foreground-muted">Loading configured Sites…</Text>
-        ) : null}
-        {sitesState.kind === "error" ? <ErrorBanner message={sitesState.message} /> : null}
-        {sitesState.kind === "ready" && sites.length === 0 ? (
-          <Text className="text-sm text-foreground-muted">No Sites are configured.</Text>
-        ) : null}
-
-        {selectedSite ? (
-          <>
-            <View>
-              <Text className="font-t3-bold text-3xl text-foreground">{selectedSite.label}</Text>
-              <Text className="mt-0.5 text-base text-foreground-muted">{selectedSite.url}</Text>
-            </View>
-            <SeoDataDate freshness={refresh.freshness} />
-            <SeoStaleNote read={history.read} />
-            <SeoDailyChart days={days} loading={history.read.kind === "loading"} />
-
-            <SeoSectionHeader
-              title="Daily overview"
-              actionLabel="see more"
-              onPress={() => navigation.navigate("SeoHistory")}
-            />
-            {days.length === 0 ? (
-              <Text className="text-sm text-foreground-muted">
-                No daily totals yet for this Site.
-              </Text>
-            ) : (
-              <DailyTable days={recentDays(days)} />
-            )}
-
-            <SeoSectionHeader
-              title="Log"
-              actionLabel="see more"
-              onPress={() => navigation.navigate("SeoLog")}
-            />
-            <SeoStaleNote read={log.read} />
-            {actions.length === 0 ? (
-              <Text className="text-sm text-foreground-muted">No Actions or Notes logged yet.</Text>
-            ) : (
-              actions
-                .slice(0, OVERVIEW_LOG_ENTRIES)
-                .map((entry, index) => (
-                  <LogRow
-                    key={`${entry.date}:${entry.path}:${entry.kind}:${entry.id ?? index}`}
-                    entry={entry}
-                    onPress={() => navigation.navigate("SeoPage", { path: entry.path })}
-                  />
-                ))
-            )}
-
-            <SeoSectionHeader
-              title="Registry"
-              actionLabel="see more"
-              onPress={() => navigation.navigate("SeoRegistry")}
-            />
-            <SeoStaleNote read={registry.read} />
-            {targets.length === 0 ? (
-              <Text className="text-sm text-foreground-muted">
-                The Registry has no targets yet.
-              </Text>
-            ) : (
-              <RegistryTable
-                targets={targets.slice(0, OVERVIEW_REGISTRY_ROWS)}
-                onSelect={(path) => navigation.navigate("SeoPage", { path })}
+      {sitesState.kind === "error" ? <ErrorBanner message={sitesState.message} /> : null}
+      {sites.length === 0 ? (
+        <View className="flex-1 bg-screen px-5 pt-5">
+          <Text className="text-sm text-foreground-muted">
+            {sitesState.kind === "loading"
+              ? "Loading configured Sites…"
+              : "No Sites are configured."}
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          ref={listRef}
+          horizontal
+          pagingEnabled
+          directionalLockEnabled
+          showsHorizontalScrollIndicator={false}
+          decelerationRate="fast"
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1 }}
+          onMomentumScrollEnd={(event) => {
+            const pageWidth = Math.max(1, event.nativeEvent.layoutMeasurement.width);
+            const index = Math.min(
+              sites.length - 1,
+              Math.max(0, Math.round(event.nativeEvent.contentOffset.x / pageWidth)),
+            );
+            const site = sites[index];
+            if (site && site.id !== selectedSite?.id) select(site.id);
+          }}
+        >
+          {sites.map((site) => (
+            <View key={site.id} style={{ width, flex: 1 }}>
+              <SeoHomeSitePage
+                client={client}
+                site={site}
+                width={width}
+                navigation={navigation}
+                onRefreshSites={loadSites}
               />
-            )}
-          </>
-        ) : null}
-      </ScrollView>
+            </View>
+          ))}
+        </ScrollView>
+      )}
     </>
+  );
+}
+
+function SeoHomeSitePage(props: {
+  readonly client: NonNullable<ReturnType<typeof useSeoClient>>;
+  readonly site: SeoSite;
+  readonly width: number;
+  readonly navigation: NavigationProp<SeoStackParamList>;
+  readonly onRefreshSites: () => Promise<void>;
+}) {
+  const historyFetcher = useMemo(
+    () => () => props.client.history(props.site.id, OVERVIEW_HISTORY_DAYS),
+    [props.client, props.site.id],
+  );
+  const logFetcher = useMemo(
+    () => () => props.client.log(props.site.id),
+    [props.client, props.site.id],
+  );
+  const registryFetcher = useMemo(
+    () => () => props.client.registry(props.site.id),
+    [props.client, props.site.id],
+  );
+  const history = useSeoRead(`history:${props.site.id}:${OVERVIEW_HISTORY_DAYS}`, historyFetcher);
+  const log = useSeoRead(`log:${props.site.id}`, logFetcher);
+  const registry = useSeoRead(`registry:${props.site.id}`, registryFetcher);
+  const refresh = useSeoRefresh(props.client, props.site.id, () =>
+    Promise.all([props.onRefreshSites(), history.reload(), log.reload(), registry.reload()]),
+  );
+  const historyEnvelope = displayableEnvelope(history.read);
+  const logEnvelope = displayableEnvelope(log.read);
+  const registryEnvelope = displayableEnvelope(registry.read);
+  const days = historyEnvelope?.data.days ?? [];
+  const actions = logEnvelope?.data.actions ?? [];
+  const targets = registryEnvelope?.data.targets ?? [];
+
+  return (
+    <ScrollView
+      style={{ width: props.width }}
+      className="flex-1 bg-screen"
+      contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
+      refreshControl={
+        <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.refresh} />
+      }
+    >
+      <View>
+        <Text className="font-t3-bold text-3xl text-foreground">{props.site.label}</Text>
+        <Text className="mt-0.5 text-base text-foreground-muted">{props.site.url}</Text>
+      </View>
+      <SeoDataDate freshness={refresh.freshness} />
+      <SeoStaleNote read={history.read} />
+      <SeoDailyChart days={days} loading={history.read.kind === "loading"} />
+
+      <SeoSectionHeader
+        title="Daily overview"
+        actionLabel="see more"
+        onPress={() => props.navigation.navigate("SeoHistory")}
+      />
+      {days.length === 0 ? (
+        <Text className="text-sm text-foreground-muted">No daily totals yet for this Site.</Text>
+      ) : (
+        <DailyTable days={recentDays(days)} />
+      )}
+
+      <SeoSectionHeader
+        title="Log"
+        actionLabel="see more"
+        onPress={() => props.navigation.navigate("SeoLog")}
+      />
+      <SeoStaleNote read={log.read} />
+      {actions.length === 0 ? (
+        <Text className="text-sm text-foreground-muted">No Actions or Notes logged yet.</Text>
+      ) : (
+        actions
+          .slice(0, OVERVIEW_LOG_ENTRIES)
+          .map((entry, index) => (
+            <LogRow
+              key={`${entry.date}:${entry.path}:${entry.kind}:${entry.id ?? index}`}
+              entry={entry}
+              onPress={() => props.navigation.navigate("SeoPage", { path: entry.path })}
+            />
+          ))
+      )}
+
+      <SeoSectionHeader
+        title="Registry"
+        actionLabel="see more"
+        onPress={() => props.navigation.navigate("SeoRegistry")}
+      />
+      <SeoStaleNote read={registry.read} />
+      {targets.length === 0 ? (
+        <Text className="text-sm text-foreground-muted">The Registry has no targets yet.</Text>
+      ) : (
+        <RegistryTable
+          targets={targets.slice(0, OVERVIEW_REGISTRY_ROWS)}
+          onSelect={(path) => props.navigation.navigate("SeoPage", { path })}
+        />
+      )}
+    </ScrollView>
   );
 }

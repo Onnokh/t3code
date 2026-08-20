@@ -1,10 +1,11 @@
-import { useMemo } from "react";
-import { RefreshControl, ScrollView, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { RefreshControl, ScrollView, useWindowDimensions, View } from "react-native";
 import { type StaticScreenProps } from "@react-navigation/native";
 
 import { AppText as Text } from "../../../components/AppText";
 import { EmptyState } from "../../../components/EmptyState";
 import { FieldRow, SectionTitle } from "../automations/AutomationsUi";
+import { readDevskiCacheEntry, writeDevskiCacheEntry } from "../devski-read-cache";
 import { useSeoClient, useSeoRead, useSeoRefresh } from "./seo-api";
 import {
   describeIndexState,
@@ -13,6 +14,8 @@ import {
   formatMetrics,
   formatWindow,
   PARTIAL_VISIBILITY_NOTE,
+  resolveSelectedSite,
+  type SeoSite,
 } from "./seo-state";
 import { SeoDataDate, SeoFreshnessBanner } from "./SeoUi";
 import { useSeoSitePreference } from "./use-seo-site";
@@ -20,6 +23,7 @@ import { useSeoSitePreference } from "./use-seo-site";
 type Params = { readonly path: string };
 
 const VISIBLE_SERIES_DAYS = 14;
+const SITES_CACHE_KEY = "seo:sites";
 
 /**
  * Full report for one canonical page path: plan, rationale, verdict
@@ -29,23 +33,38 @@ const VISIBLE_SERIES_DAYS = 14;
 export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
   const { path } = route.params;
   const client = useSeoClient();
-  const { selectedSiteId } = useSeoSitePreference();
-
-  const fetcher = useMemo(
-    () => (client && selectedSiteId ? () => client.page(selectedSiteId, path) : null),
-    [client, selectedSiteId, path],
+  const { selectedSiteId, select } = useSeoSitePreference();
+  const [sites, setSites] = useState<readonly SeoSite[]>(
+    () => readDevskiCacheEntry<readonly SeoSite[]>(SITES_CACHE_KEY) ?? [],
   );
-  const { read, reload } = useSeoRead(
-    selectedSiteId ? `page:${selectedSiteId}:${path}` : null,
-    fetcher,
-  );
-  // Pull to refresh reads live and asks Ranksta to look at Search Console
-  // again. It resolves on the read, never on the sync.
-  const refresh = useSeoRefresh(client, selectedSiteId, reload);
-  const envelope = displayableEnvelope(read);
-  const page = envelope?.data ?? null;
+  useEffect(() => {
+    if (!client) return;
+    let active = true;
+    void client.sites().then((result) => {
+      if (!active || result.kind !== "ok") return;
+      writeDevskiCacheEntry(SITES_CACHE_KEY, result.value);
+      setSites(result.value);
+    });
+    return () => {
+      active = false;
+    };
+  }, [client]);
 
-  if (!client || !selectedSiteId) {
+  const { width } = useWindowDimensions();
+  const listRef = useRef<ScrollView>(null);
+  const selectedSite = resolveSelectedSite(selectedSiteId ?? undefined, sites);
+  const selectedId = selectedSite?.id ?? selectedSiteId;
+  const selectedIndex = Math.max(
+    0,
+    sites.findIndex((site) => site.id === selectedId),
+  );
+
+  useEffect(() => {
+    if (sites.length === 0) return;
+    listRef.current?.scrollTo({ x: selectedIndex * width, animated: true });
+  }, [selectedIndex, sites.length]);
+
+  if (!client || !selectedId) {
     return (
       <View className="flex-1 bg-screen">
         <EmptyState
@@ -57,9 +76,57 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
     );
   }
 
+  if (sites.length === 0) {
+    return <SeoPageDetailSite client={client} path={path} siteId={selectedId} width={width} />;
+  }
+
   return (
     <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
+      ref={listRef}
+      horizontal
+      pagingEnabled
+      directionalLockEnabled
+      showsHorizontalScrollIndicator={false}
+      decelerationRate="fast"
+      style={{ flex: 1 }}
+      contentContainerStyle={{ flexGrow: 1 }}
+      onMomentumScrollEnd={(event) => {
+        const pageWidth = Math.max(1, event.nativeEvent.layoutMeasurement.width);
+        const index = Math.min(
+          sites.length - 1,
+          Math.max(0, Math.round(event.nativeEvent.contentOffset.x / pageWidth)),
+        );
+        const site = sites[index];
+        if (site && site.id !== selectedId) select(site.id);
+      }}
+    >
+      {sites.map((site) => (
+        <View key={site.id} style={{ width, flex: 1 }}>
+          <SeoPageDetailSite client={client} path={path} siteId={site.id} width={width} />
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function SeoPageDetailSite(props: {
+  readonly client: NonNullable<ReturnType<typeof useSeoClient>>;
+  readonly path: string;
+  readonly siteId: string;
+  readonly width: number;
+}) {
+  const fetcher = useMemo(
+    () => () => props.client.page(props.siteId, props.path),
+    [props.client, props.path, props.siteId],
+  );
+  const { read, reload } = useSeoRead(`page:${props.siteId}:${props.path}`, fetcher);
+  const refresh = useSeoRefresh(props.client, props.siteId, reload);
+  const envelope = displayableEnvelope(read);
+  const page = envelope?.data ?? null;
+
+  return (
+    <ScrollView
+      style={{ width: props.width }}
       className="flex-1 bg-screen"
       contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 20 }}
       refreshControl={
@@ -67,7 +134,7 @@ export function SeoPageDetailScreen({ route }: StaticScreenProps<Params>) {
       }
     >
       <Text className="font-t3-bold text-foreground" selectable>
-        {path}
+        {props.path}
       </Text>
       <SeoDataDate freshness={refresh.freshness} />
       <SeoFreshnessBanner read={read} />
